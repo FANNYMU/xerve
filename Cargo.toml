@@ -1,0 +1,17 @@
+[package]
+name = "xerve"
+version = "0.1.0"
+edition = "2021"
+
+[dependencies]
+eframe = { version = "0.32", features = [
+    "default"
+] }
+
+# For image support:
+egui_extras = { version = "0.32", features = ["default", "image"] }
+
+env_logger = { version = "0.11.8", default-features = false, features = [
+    "auto-color",
+    "humantime",
+] }
