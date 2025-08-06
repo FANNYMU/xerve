@@ -28,7 +28,8 @@ impl Service for ServiceInfo {
     fn start(&self) {
         println!("Starting {} service...", self.name);
 
-        if self.status() == "Running" {
+        let mut status_guard = self.status.lock().unwrap();
+        if *status_guard == "Running" {
             println!("{} is already running", self.name);
             return;
         }
@@ -47,7 +48,7 @@ impl Service for ServiceInfo {
             match output {
                 Ok(_) => {
                     println!("Nginx started successfully");
-                    *self.status.lock().unwrap() = "Running".to_string();
+                    *status_guard = "Running".to_string();
                 }
                 Err(e) => {
                     eprintln!("Failed to start Nginx: {}", e);
@@ -96,11 +97,33 @@ impl Service for ServiceInfo {
                 .spawn();
 
             match output {
-                Ok(child) => {
-                    // Store the process ID for later use
-                    *self.process_id.lock().unwrap() = Some(child.id());
-                    println!("MariaDB started with PID: {}", child.id());
-                    *self.status.lock().unwrap() = "Running".to_string();
+                Ok(mut child) => {
+                    let pid = child.id();
+                    *self.process_id.lock().unwrap() = Some(pid);
+
+                    let service_name = self.name.clone();
+                    let status_arc = Arc::clone(&self.status);
+                    std::thread::spawn(move || {
+                        match child.wait() {
+                            Ok(exit_status) => {
+                                if exit_status.success() {
+                                    println!("MariaDB process exited successfully (PID: {})", pid);
+                                } else {
+                                    eprintln!("MariaDB process exited with code: {:?}", exit_status.code());
+                                }
+                            }
+                            Err(e) => {
+                                eprintln!("Failed to wait for MariaDB process: {}", e);
+                            }
+                        }
+                        *status_arc.lock().unwrap() = "Stopped".to_string();
+                        println!("{} status set to Stopped after process exit.", service_name);
+                    });
+
+                    std::thread::sleep(std::time::Duration::from_millis(500));
+
+                    println!("MariaDB started successfully with PID: {}", pid);
+                    *status_guard = "Running".to_string();
                 }
                 Err(e) => {
                     eprintln!("Failed to start MariaDB: {}", e);
@@ -117,7 +140,7 @@ impl Service for ServiceInfo {
                 
             match output {
                 Ok(_) => {
-                    *self.status.lock().unwrap() = "Running".to_string();
+                    *status_guard = "Running".to_string();
                 }
                 Err(e) => {
                     eprintln!("Failed to start {}: {}", self.name, e);
@@ -129,11 +152,14 @@ impl Service for ServiceInfo {
     fn stop(&self) {
         println!("Stopping {} service...", self.name);
 
-        if self.status() == "Stopped" {
+        let mut status_guard = self.status.lock().unwrap();
+
+        if *status_guard == "Stopped" {
             println!("{} is already stopped", self.name);
+            *self.process_id.lock().unwrap() = None;
             return;
         }
-
+        
         if self.name == "Nginx" {
             // For Nginx, we need to set the current directory
             let nginx_dir = std::path::Path::new("./resource/nginx");
@@ -141,8 +167,9 @@ impl Service for ServiceInfo {
             // Check if nginx.pid exists before trying to stop
             let pid_file = nginx_dir.join("logs/nginx.pid");
             if !pid_file.exists() {
-                println!("Nginx PID file not found, assuming Nginx is not running");
-                *self.status.lock().unwrap() = "Stopped".to_string();
+                println!("Nginx PID file not found, assuming Nginx is not running. Setting status to Stopped.");
+                *status_guard = "Stopped".to_string();
+                *self.process_id.lock().unwrap() = None;
                 return;
             }
             
@@ -157,13 +184,14 @@ impl Service for ServiceInfo {
             match output {
                 Ok(_) => {
                     println!("Nginx stopped successfully");
-                    *self.status.lock().unwrap() = "Stopped".to_string();
+                    *status_guard = "Stopped".to_string();
                 }
                 Err(e) => {
                     eprintln!("Failed to stop Nginx: {}", e);
-                    *self.status.lock().unwrap() = "Stopped".to_string();
+                    *status_guard = "Error".to_string();
                 }
             }
+            *self.process_id.lock().unwrap() = None;
         } else if self.name == "MariaDB" {
             // For MariaDB, we'll try multiple approaches to stop it
             let mariadb_dir = std::path::Path::new("./resource/mariadb");
@@ -180,7 +208,8 @@ impl Service for ServiceInfo {
                 
             if output.is_ok() {
                 println!("MariaDB stopped successfully with mysqladmin");
-                *self.status.lock().unwrap() = "Stopped".to_string();
+                *status_guard = "Stopped".to_string();
+                *self.process_id.lock().unwrap() = None;
                 return;
             }
             
@@ -199,7 +228,8 @@ impl Service for ServiceInfo {
                     
                 if kill_by_pid.is_ok() {
                     println!("MariaDB stopped successfully by PID");
-                    *self.status.lock().unwrap() = "Stopped".to_string();
+                    *status_guard = "Stopped".to_string();
+                    *self.process_id.lock().unwrap() = None;
                     return;
                 }
             }
@@ -226,11 +256,12 @@ impl Service for ServiceInfo {
                 
             if kill_mysqld.is_ok() || kill_mariadbd.is_ok() {
                 println!("MariaDB stopped successfully with taskkill");
-                *self.status.lock().unwrap() = "Stopped".to_string();
+                *status_guard = "Stopped".to_string();
             } else {
                 eprintln!("Failed to stop MariaDB with taskkill");
-                *self.status.lock().unwrap() = "Stopped".to_string();
+                *status_guard = "Error".to_string();
             }
+            *self.process_id.lock().unwrap() = None;
         } else {
             let output = std::process::Command::new(&self.file_path)
                 .arg("-s")
@@ -241,12 +272,13 @@ impl Service for ServiceInfo {
                 
             match output {
                 Ok(_) => {
-                    *self.status.lock().unwrap() = "Stopped".to_string();
+                    *status_guard = "Stopped".to_string();
                 }
                 Err(e) => {
                     eprintln!("Failed to stop {}: {}", self.name, e);
                 }
             }
+            *self.process_id.lock().unwrap() = None;
         }
     }
 
