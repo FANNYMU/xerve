@@ -15,3 +15,5 @@ env_logger = { version = "0.11.8", default-features = false, features = [
     "auto-color",
     "humantime",
 ] }
+
+ctrlc = "3.4"
