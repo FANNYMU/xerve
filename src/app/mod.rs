@@ -9,13 +9,31 @@ pub struct XoverApp {
 impl XoverApp {
     pub fn cleanup_services(&self) {
         println!("Cleaning up services...");
+        let mut running_services = 0;
+        
+        // Count running services
         for service in &self.services {
+            if service.status() == "Running" {
+                running_services += 1;
+            }
+        }
+        
+        if running_services == 0 {
+            println!("No services to clean up.");
+            return;
+        }
+        
+        // Stop all running services
+        for service in &self.services {
+            // Only try to stop services that are marked as running
             if service.status() == "Running" {
                 println!("Stopping {}...", service.name);
                 service.stop();
             }
         }
-        std::thread::sleep(std::time::Duration::from_millis(1000)); 
+        
+        println!("Waiting for services to shut down...");
+        std::thread::sleep(std::time::Duration::from_millis(3000));
         println!("Service cleanup completed.");
     }
 }

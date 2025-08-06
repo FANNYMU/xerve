@@ -10,6 +10,7 @@ pub struct ServiceInfo {
     pub name: String,
     status: Arc<Mutex<String>>,
     file_path: String,
+    process_id: Arc<Mutex<Option<u32>>>,
 }
 
 impl ServiceInfo {
@@ -18,6 +19,7 @@ impl ServiceInfo {
             name: name.to_string(),
             status: Arc::new(Mutex::new(status.to_string())),
             file_path: file_path.to_string(),
+            process_id: Arc::new(Mutex::new(None)),
         }
     }
 }
@@ -71,8 +73,8 @@ impl Service for ServiceInfo {
             
             match output {
                 Ok(child) => {
-                    std::thread::sleep(std::time::Duration::from_millis(500));
-                    println!("MariaDB started with PID: {}", child.id());
+                    *self.process_id.lock().unwrap() = Some(child.id());
+                    println!("MariaDB started with process ID: {}", child.id());
                     *self.status.lock().unwrap() = "Running".to_string();
                 }
                 Err(e) => {
@@ -133,15 +135,15 @@ impl Service for ServiceInfo {
                 }
                 Err(e) => {
                     eprintln!("Failed to stop Nginx: {}", e);
-                    // Still mark as stopped to avoid repeated error messages
                     *self.status.lock().unwrap() = "Stopped".to_string();
                 }
             }
         } else if self.name == "MariaDB" {
-            // For MariaDB, try to stop using mysqladmin
+            // For MariaDB, we'll try multiple approaches to stop it
             let mariadb_dir = std::path::Path::new("./resource/mariadb");
             
-            let output = std::process::Command::new("mysqladmin")
+            let mysqladmin_path = mariadb_dir.join("bin/mysqladmin.exe");
+            let output = std::process::Command::new(&mysqladmin_path)
                 .current_dir(mariadb_dir)
                 .arg("-u")
                 .arg("root")
@@ -150,35 +152,58 @@ impl Service for ServiceInfo {
                 .stderr(std::process::Stdio::piped())
                 .status();
                 
-            match output {
-                Ok(_) => {
-                    println!("MariaDB stopped successfully");
+            if output.is_ok() {
+                println!("MariaDB stopped successfully with mysqladmin");
+                *self.status.lock().unwrap() = "Stopped".to_string();
+                return;
+            }
+            
+            // If mysqladmin fails, try with the stored process ID
+            let process_id = *self.process_id.lock().unwrap();
+            if let Some(pid) = process_id {
+                eprintln!("Failed to stop MariaDB with mysqladmin, trying to kill process ID {}", pid);
+                
+                let kill_by_pid = std::process::Command::new("taskkill")
+                    .arg("/F")
+                    .arg("/PID")
+                    .arg(pid.to_string())
+                    .stdout(std::process::Stdio::piped())
+                    .stderr(std::process::Stdio::piped())
+                    .status();
+                    
+                if kill_by_pid.is_ok() {
+                    println!("MariaDB stopped successfully by PID");
                     *self.status.lock().unwrap() = "Stopped".to_string();
+                    return;
                 }
-                Err(e) => {
-                    // If mysqladmin fails, try with the mysqld process directly
-                    eprintln!("Failed to stop MariaDB with mysqladmin: {}", e);
-                    println!("Trying alternative shutdown method...");
-                    
-                    let kill_output = std::process::Command::new("taskkill")
-                        .arg("/F")
-                        .arg("/IM")
-                        .arg("mysqld.exe")
-                        .stdout(std::process::Stdio::piped())
-                        .stderr(std::process::Stdio::piped())
-                        .status();
-                    
-                    match kill_output {
-                        Ok(_) => {
-                            println!("MariaDB stopped successfully with taskkill");
-                            *self.status.lock().unwrap() = "Stopped".to_string();
-                        }
-                        Err(e) => {
-                            eprintln!("Failed to stop MariaDB with taskkill: {}", e);
-                            *self.status.lock().unwrap() = "Stopped".to_string();
-                        }
-                    }
-                }
+            }
+            
+            eprintln!("Failed to stop MariaDB with mysqladmin and PID, trying alternative methods...");
+            
+            // Try to kill mysqld process
+            let kill_mysqld = std::process::Command::new("taskkill")
+                .arg("/F")
+                .arg("/IM")
+                .arg("mysqld.exe")
+                .stdout(std::process::Stdio::piped())
+                .stderr(std::process::Stdio::piped())
+                .status();
+                
+            // Try to kill mariadbd process
+            let kill_mariadbd = std::process::Command::new("taskkill")
+                .arg("/F")
+                .arg("/IM")
+                .arg("mariadbd.exe")
+                .stdout(std::process::Stdio::piped())
+                .stderr(std::process::Stdio::piped())
+                .status();
+                
+            if kill_mysqld.is_ok() || kill_mariadbd.is_ok() {
+                println!("MariaDB stopped successfully with taskkill");
+                *self.status.lock().unwrap() = "Stopped".to_string();
+            } else {
+                eprintln!("Failed to stop MariaDB with taskkill");
+                *self.status.lock().unwrap() = "Stopped".to_string();
             }
         } else {
             let output = std::process::Command::new(&self.file_path)
