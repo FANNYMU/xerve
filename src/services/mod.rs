@@ -54,34 +54,60 @@ impl Service for ServiceInfo {
                 }
             }
         } else if self.name == "MariaDB" {
-            // For MariaDB, we need to set the current directory and specify the config file
             let mariadb_dir = std::path::Path::new("./resource/mariadb");
-            
-            // Check if data directory exists, if not, we might need to initialize MariaDB
             let data_dir = mariadb_dir.join("data");
+
             if !data_dir.exists() {
-                println!("MariaDB data directory not found. Please initialize MariaDB first.");
-                return;
+                println!("MariaDB data directory not found. Initializing...");
+                
+                if let Err(e) = std::fs::create_dir_all(&data_dir) {
+                    eprintln!("Failed to create MariaDB data directory: {}", e);
+                    return;
+                }
+
+                let init_status = std::process::Command::new(mariadb_dir.join("bin/mariadb-install-db.exe"))
+                    .arg("--datadir=./data")
+                    .current_dir(&mariadb_dir)
+                    .stdout(std::process::Stdio::inherit())
+                    .stderr(std::process::Stdio::inherit())
+                    .status();
+
+                match init_status {
+                    Ok(status) if status.success() => {
+                        println!("✅ MariaDB initialized successfully");
+                    }
+                    Ok(status) => {
+                        eprintln!("❌ MariaDB initialization failed with status: {:?}", status.code());
+                        return;
+                    }
+                    Err(e) => {
+                        eprintln!("❌ Failed to initialize MariaDB: {}", e);
+                        return;
+                    }
+                }
             }
-            
-            let output = std::process::Command::new(&self.file_path)
-                .current_dir(mariadb_dir)
+
+            println!("Starting MariaDB service...");
+            let output = std::process::Command::new(mariadb_dir.join("bin/mysqld.exe"))
+                .current_dir(&mariadb_dir)
                 .arg("--defaults-file=my.ini")
                 .stdout(std::process::Stdio::piped())
                 .stderr(std::process::Stdio::piped())
                 .spawn();
-            
+
             match output {
                 Ok(child) => {
+                    // Store the process ID for later use
                     *self.process_id.lock().unwrap() = Some(child.id());
-                    println!("MariaDB started with process ID: {}", child.id());
+                    println!("MariaDB started with PID: {}", child.id());
                     *self.status.lock().unwrap() = "Running".to_string();
                 }
                 Err(e) => {
                     eprintln!("Failed to start MariaDB: {}", e);
                 }
             }
-        } else {
+        }
+        else {
             let output = std::process::Command::new(&self.file_path)
                 .arg("-s")
                 .arg("start")
