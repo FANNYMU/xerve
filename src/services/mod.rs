@@ -58,6 +58,7 @@ impl Service for ServiceInfo {
             let mariadb_dir = std::path::Path::new("./resource/mariadb");
             let data_dir = mariadb_dir.join("data");
 
+            let mut data_dir_created = false;
             if !data_dir.exists() {
                 println!("MariaDB data directory not found. Initializing...");
                 
@@ -65,6 +66,7 @@ impl Service for ServiceInfo {
                     eprintln!("Failed to create MariaDB data directory: {}", e);
                     return;
                 }
+                data_dir_created = true;
 
                 let init_status = std::process::Command::new(mariadb_dir.join("bin/mariadb-install-db.exe"))
                     .arg("--datadir=./data")
@@ -79,13 +81,33 @@ impl Service for ServiceInfo {
                     }
                     Ok(status) => {
                         eprintln!("❌ MariaDB initialization failed with status: {:?}", status.code());
+                        if data_dir_created {
+                            if let Err(e) = std::fs::remove_dir_all(&data_dir) {
+                                eprintln!("Failed to rollback MariaDB data directory: {}", e);
+                            } else {
+                                println!("Rolled back MariaDB data directory.");
+                            }
+                        }
                         return;
                     }
                     Err(e) => {
                         eprintln!("❌ Failed to initialize MariaDB: {}", e);
+                        if data_dir_created {
+                            if let Err(e) = std::fs::remove_dir_all(&data_dir) {
+                                eprintln!("Failed to rollback MariaDB data directory: {}", e);
+                            } else {
+                                println!("Rolled back MariaDB data directory.");
+                            }
+                        }
                         return;
                     }
                 }
+            }
+
+            if !data_dir.exists() || std::fs::read_dir(&data_dir).map(|mut d| d.next().is_none()).unwrap_or(true) {
+                eprintln!("MariaDB data directory is missing or empty. Cannot start service.");
+                *status_guard = "Error".to_string();
+                return;
             }
 
             println!("Starting MariaDB service...");
