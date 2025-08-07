@@ -18,7 +18,9 @@ fn main() -> eframe::Result {
         Box::new(|cc| {
             cc.egui_ctx.set_visuals(egui::Visuals::dark());
             egui_extras::install_image_loaders(&cc.egui_ctx);
-            Ok(Box::new(app::XoverApp::default()))
+            let app = app::XoverApp::default();
+            services::set_terminal(app.get_terminal());
+            Ok(Box::new(app))
         }),
     )
 }

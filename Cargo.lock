@@ -3755,6 +3755,7 @@ dependencies = [
  "eframe",
  "egui_extras",
  "env_logger",
+ "once_cell",
 ]
 
 [[package]]

@@ -4,14 +4,14 @@ use std::sync::{Arc, Mutex};
 
 pub struct XoverApp {
     services: Vec<ServiceInfo>,
+    terminal: crate::ui::Terminal,
 }
 
 impl XoverApp {
     pub fn cleanup_services(&self) {
-        println!("Cleaning up services...");
+        self.terminal.add_log("Cleaning up services...".to_string());
         let mut running_services = 0;
         
-        // Count running services
         for service in &self.services {
             if service.status() == "Running" {
                 running_services += 1;
@@ -19,22 +19,24 @@ impl XoverApp {
         }
         
         if running_services == 0 {
-            println!("No services to clean up.");
+            self.terminal.add_log("No services to clean up.".to_string());
             return;
         }
         
-        // Stop all running services
         for service in &self.services {
-            // Only try to stop services that are marked as running
             if service.status() == "Running" {
-                println!("Stopping {}...", service.name);
+                self.terminal.add_log(format!("Stopping {}...", service.name));
                 service.stop();
             }
         }
         
-        println!("Waiting for services to shut down...");
+        self.terminal.add_log("Waiting for services to shut down...".to_string());
         std::thread::sleep(std::time::Duration::from_millis(3000));
-        println!("Service cleanup completed.");
+        self.terminal.add_log("Service cleanup completed.".to_string());
+    }
+    
+    pub fn get_terminal(&self) -> crate::ui::Terminal {
+        self.terminal.clone()
     }
 }
 
@@ -43,7 +45,6 @@ impl Default for XoverApp {
         let nginx_dir = std::path::Path::new("./resource/nginx");
         let nginx_pid_file = nginx_dir.join("logs/nginx.pid");
         
-        // Check if Nginx is running by checking if nginx.pid file exists
         let nginx_status = if nginx_pid_file.exists() {
             "Running"
         } else {
@@ -67,6 +68,7 @@ impl Default for XoverApp {
 
         XoverApp {
             services: vec![nginx_service, mariadb_service],
+            terminal: crate::ui::Terminal::new(),
         }
     }
 }
@@ -94,10 +96,10 @@ impl eframe::App for XoverApp {
         });
 
         egui::CentralPanel::default().show(ctx, |ui| {
-            ui.add_space(50.0);
+            ui.add_space(30.0);
             ui.vertical_centered(|ui| {
                 ui.heading(
-                    egui::RichText::new("Xover")
+                    egui::RichText::new("Xerve")
                         .size(48.0)
                         .strong()
                         .color(egui::Color32::from_rgb(80, 180, 255)),
@@ -109,7 +111,7 @@ impl eframe::App for XoverApp {
                         .italics()
                         .color(egui::Color32::from_rgb(160, 160, 160)),
                 );
-                ui.add_space(40.0);
+                ui.add_space(20.0);
 
                 egui::Frame::group(ui.style())
                     .fill(egui::Color32::from_rgb(30, 30, 30))
@@ -134,7 +136,11 @@ impl eframe::App for XoverApp {
                         }
                     });
 
-                ui.add_space(35.0);
+                ui.add_space(20.0);
+                
+                self.terminal.render(ui);
+
+                ui.add_space(25.0);
                 
                 ui.label(
                     egui::RichText::new("v1.0.0")

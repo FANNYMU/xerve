@@ -1,4 +1,23 @@
 use std::sync::{Arc, Mutex};
+use std::io::{BufRead, BufReader};
+use std::process::{Command, Stdio};
+use once_cell::sync::OnceCell;
+
+static TERMINAL: OnceCell<crate::ui::Terminal> = OnceCell::new();
+
+pub fn set_terminal(terminal: crate::ui::Terminal) {
+    TERMINAL.set(terminal).ok();
+}
+
+fn get_terminal() -> Option<&'static crate::ui::Terminal> {
+    TERMINAL.get()
+}
+
+fn log_message(message: String) {
+    if let Some(terminal) = get_terminal() {
+        terminal.add_log(message);
+    }
+}
 
 pub trait Service {
     fn start(&self);
@@ -22,36 +41,104 @@ impl ServiceInfo {
             process_id: Arc::new(Mutex::new(None)),
         }
     }
+    
+    fn run_command_with_output_capture(
+        &self,
+        mut command: Command,
+        operation: &str,
+    ) -> Result<Option<std::process::Child>, String> {
+        log_message(format!("[{}] Running: {:?}", self.name, command));
+
+        match command
+            .stdout(Stdio::piped())
+            .stderr(Stdio::piped())
+            .spawn()
+        {
+            Ok(mut child) => {
+                if let Some(stdout) = child.stdout.take() {
+                    let service_name = self.name.clone();
+                    std::thread::spawn(move || {
+                        let reader = BufReader::new(stdout);
+                        for line in reader.lines() {
+                            match line {
+                                Ok(line) => {
+                                    log_message(format!("[{}] {}", service_name, line));
+                                }
+                                Err(e) => {
+                                    log_message(format!("[{}] Error reading stdout: {}", service_name, e));
+                                }
+                            }
+                        }
+                    });
+                }
+                
+                if let Some(stderr) = child.stderr.take() {
+                    let service_name = self.name.clone();
+                    std::thread::spawn(move || {
+                        let reader = BufReader::new(stderr);
+                        for line in reader.lines() {
+                            match line {
+                                Ok(line) => {
+                                    log_message(format!("[{}] STDERR: {}", service_name, line));
+                                }
+                                Err(e) => {
+                                    log_message(format!("[{}] Error reading stderr: {}", service_name, e));
+                                }
+                            }
+                        }
+                    });
+                }
+                
+                if operation == "start" && (self.name == "MariaDB" || self.name == "Nginx") {
+                    Ok(Some(child))
+                } else {
+                    match child.wait() {
+                        Ok(status) => {
+                            log_message(format!("[{}] Process finished with status: {}", self.name, status));
+                            Ok(None)
+                        }
+                        Err(e) => {
+                            log_message(format!("[{}] Error waiting for process: {}", self.name, e));
+                            Err(e.to_string())
+                        }
+                    }
+                }
+            }
+            Err(e) => {
+                let error_msg = format!("[{}] Failed to execute command: {}", self.name, e);
+                log_message(error_msg.clone());
+                Err(error_msg)
+            }
+        }
+    }
 }
 
 impl Service for ServiceInfo {
     fn start(&self) {
-        println!("Starting {} service...", self.name);
+        log_message(format!("Starting {} service...", self.name));
 
         let mut status_guard = self.status.lock().unwrap();
         if *status_guard == "Running" {
-            println!("{} is already running", self.name);
+            log_message(format!("{} is already running", self.name));
             return;
         }
 
         if self.name == "Nginx" {
-            // For Nginx, we need to set the current directory and specify the config file
             let nginx_dir = std::path::Path::new("./resource/nginx");
-            let output = std::process::Command::new(&self.file_path)
+            
+            let mut command = Command::new(&self.file_path);
+            command
                 .current_dir(nginx_dir)
                 .arg("-c")
-                .arg("conf/nginx.conf")
-                .stdout(std::process::Stdio::piped())
-                .stderr(std::process::Stdio::piped())
-                .spawn();
+                .arg("conf/nginx.conf");
             
-            match output {
+            match self.run_command_with_output_capture(command, "start") {
                 Ok(_) => {
-                    println!("Nginx started successfully");
+                    log_message("Nginx started successfully".to_string());
                     *status_guard = "Running".to_string();
                 }
                 Err(e) => {
-                    eprintln!("Failed to start Nginx: {}", e);
+                    log_message(format!("Failed to start Nginx: {}", e));
                 }
             }
         } else if self.name == "MariaDB" {
@@ -60,43 +147,30 @@ impl Service for ServiceInfo {
 
             let mut data_dir_created = false;
             if !data_dir.exists() {
-                println!("MariaDB data directory not found. Initializing...");
+                log_message("MariaDB data directory not found. Initializing...".to_string());
                 
                 if let Err(e) = std::fs::create_dir_all(&data_dir) {
-                    eprintln!("Failed to create MariaDB data directory: {}", e);
+                    log_message(format!("Failed to create MariaDB data directory: {}", e));
                     return;
                 }
                 data_dir_created = true;
 
-                let init_status = std::process::Command::new(mariadb_dir.join("bin/mariadb-install-db.exe"))
+                let mut init_command = Command::new(mariadb_dir.join("bin/mariadb-install-db.exe"));
+                init_command
                     .arg("--datadir=./data")
-                    .current_dir(&mariadb_dir)
-                    .stdout(std::process::Stdio::inherit())
-                    .stderr(std::process::Stdio::inherit())
-                    .status();
-
-                match init_status {
-                    Ok(status) if status.success() => {
-                        println!("✅ MariaDB initialized successfully");
-                    }
-                    Ok(status) => {
-                        eprintln!("❌ MariaDB initialization failed with status: {:?}", status.code());
-                        if data_dir_created {
-                            if let Err(e) = std::fs::remove_dir_all(&data_dir) {
-                                eprintln!("Failed to rollback MariaDB data directory: {}", e);
-                            } else {
-                                println!("Rolled back MariaDB data directory.");
-                            }
-                        }
-                        return;
+                    .current_dir(&mariadb_dir);
+                
+                match self.run_command_with_output_capture(init_command, "init") {
+                    Ok(_) => {
+                        log_message("MariaDB initialized successfully".to_string());
                     }
                     Err(e) => {
-                        eprintln!("❌ Failed to initialize MariaDB: {}", e);
+                        log_message(format!("MariaDB initialization failed: {}", e));
                         if data_dir_created {
                             if let Err(e) = std::fs::remove_dir_all(&data_dir) {
-                                eprintln!("Failed to rollback MariaDB data directory: {}", e);
+                                log_message(format!("Failed to rollback MariaDB data directory: {}", e));
                             } else {
-                                println!("Rolled back MariaDB data directory.");
+                                log_message("Rolled back MariaDB data directory.".to_string());
                             }
                         }
                         return;
@@ -105,199 +179,177 @@ impl Service for ServiceInfo {
             }
 
             if !data_dir.exists() || std::fs::read_dir(&data_dir).map(|mut d| d.next().is_none()).unwrap_or(true) {
-                eprintln!("MariaDB data directory is missing or empty. Cannot start service.");
+                log_message("MariaDB data directory is missing or empty. Cannot start service.".to_string());
                 *status_guard = "Error".to_string();
                 return;
             }
 
-            println!("Starting MariaDB service...");
-            let output = std::process::Command::new(mariadb_dir.join("bin/mysqld.exe"))
+            log_message("Starting MariaDB service...".to_string());
+            let mut command = Command::new(mariadb_dir.join("bin/mysqld.exe"));
+            command
                 .current_dir(&mariadb_dir)
-                .arg("--defaults-file=my.ini")
-                .stdout(std::process::Stdio::piped())
-                .stderr(std::process::Stdio::piped())
-                .spawn();
-
-            match output {
-                Ok(mut child) => {
+                .arg("--defaults-file=my.ini");
+            
+            match self.run_command_with_output_capture(command, "start") {
+                Ok(Some(mut child)) => {
                     let pid = child.id();
                     *self.process_id.lock().unwrap() = Some(pid);
-
+                    
                     let service_name = self.name.clone();
                     let status_arc = Arc::clone(&self.status);
                     std::thread::spawn(move || {
                         match child.wait() {
                             Ok(exit_status) => {
-                                if exit_status.success() {
-                                    println!("MariaDB process exited successfully (PID: {})", pid);
-                                } else {
-                                    eprintln!("MariaDB process exited with code: {:?}", exit_status.code());
-                                }
+                                log_message(format!("{} process exited with status: {}", service_name, exit_status));
                             }
                             Err(e) => {
-                                eprintln!("Failed to wait for MariaDB process: {}", e);
+                                log_message(format!("Error waiting for {} process: {}", service_name, e));
                             }
                         }
                         *status_arc.lock().unwrap() = "Stopped".to_string();
-                        println!("{} status set to Stopped after process exit.", service_name);
+                        log_message(format!("{} status set to Stopped after process exit.", service_name));
                     });
-
+                    
                     std::thread::sleep(std::time::Duration::from_millis(500));
-
-                    println!("MariaDB started successfully with PID: {}", pid);
+                    log_message(format!("MariaDB started successfully with PID: {}", pid));
                     *status_guard = "Running".to_string();
                 }
+                Ok(None) => {
+                    log_message("MariaDB command completed but process not running".to_string());
+                    *status_guard = "Stopped".to_string();
+                }
                 Err(e) => {
-                    eprintln!("Failed to start MariaDB: {}", e);
+                    log_message(format!("Failed to start MariaDB: {}", e));
                 }
             }
         }
         else {
-            let output = std::process::Command::new(&self.file_path)
-                .arg("-s")
-                .arg("start")
-                .stdout(std::process::Stdio::piped())
-                .stderr(std::process::Stdio::piped())
-                .status();
-                
-            match output {
+            let mut command = Command::new(&self.file_path);
+            command.arg("-s").arg("start");
+            
+            match self.run_command_with_output_capture(command, "start") {
                 Ok(_) => {
+                    log_message(format!("{} started successfully", self.name));
                     *status_guard = "Running".to_string();
                 }
                 Err(e) => {
-                    eprintln!("Failed to start {}: {}", self.name, e);
+                    log_message(format!("Failed to start {}: {}", self.name, e));
                 }
             }
         }
     }
 
     fn stop(&self) {
-        println!("Stopping {} service...", self.name);
+        log_message(format!("Stopping {} service...", self.name));
 
         let mut status_guard = self.status.lock().unwrap();
 
         if *status_guard == "Stopped" {
-            println!("{} is already stopped", self.name);
+            log_message(format!("{} is already stopped", self.name));
             *self.process_id.lock().unwrap() = None;
             return;
         }
         
         if self.name == "Nginx" {
-            // For Nginx, we need to set the current directory
             let nginx_dir = std::path::Path::new("./resource/nginx");
             
-            // Check if nginx.pid exists before trying to stop
             let pid_file = nginx_dir.join("logs/nginx.pid");
             if !pid_file.exists() {
-                println!("Nginx PID file not found, assuming Nginx is not running. Setting status to Stopped.");
+                log_message("Nginx PID file not found, assuming Nginx is not running. Setting status to Stopped.".to_string());
                 *status_guard = "Stopped".to_string();
                 *self.process_id.lock().unwrap() = None;
                 return;
             }
             
-            let output = std::process::Command::new(&self.file_path)
+            let mut command = Command::new(&self.file_path);
+            command
                 .current_dir(nginx_dir)
                 .arg("-s")
-                .arg("stop")
-                .stdout(std::process::Stdio::piped())
-                .stderr(std::process::Stdio::piped())
-                .status();
-                
-            match output {
+                .arg("stop");
+            
+            match self.run_command_with_output_capture(command, "stop") {
                 Ok(_) => {
-                    println!("Nginx stopped successfully");
+                    log_message("Nginx stopped successfully".to_string());
                     *status_guard = "Stopped".to_string();
                 }
                 Err(e) => {
-                    eprintln!("Failed to stop Nginx: {}", e);
+                    log_message(format!("Failed to stop Nginx: {}", e));
                     *status_guard = "Error".to_string();
                 }
             }
             *self.process_id.lock().unwrap() = None;
         } else if self.name == "MariaDB" {
-            // For MariaDB, we'll try multiple approaches to stop it
             let mariadb_dir = std::path::Path::new("./resource/mariadb");
             
-            let mysqladmin_path = mariadb_dir.join("bin/mysqladmin.exe");
-            let output = std::process::Command::new(&mysqladmin_path)
+            log_message("Attempting to stop MariaDB with mysqladmin...".to_string());
+            let mut mysqladmin_cmd = Command::new(mariadb_dir.join("bin/mysqladmin.exe"));
+            mysqladmin_cmd
                 .current_dir(mariadb_dir)
                 .arg("-u")
                 .arg("root")
-                .arg("shutdown")
-                .stdout(std::process::Stdio::piped())
-                .stderr(std::process::Stdio::piped())
-                .status();
-                
-            if output.is_ok() {
-                println!("MariaDB stopped successfully with mysqladmin");
-                *status_guard = "Stopped".to_string();
-                *self.process_id.lock().unwrap() = None;
-                return;
-            }
+                .arg("shutdown");
             
-            // If mysqladmin fails, try with the stored process ID
-            let process_id = *self.process_id.lock().unwrap();
-            if let Some(pid) = process_id {
-                eprintln!("Failed to stop MariaDB with mysqladmin, trying to kill process ID {}", pid);
-                
-                let kill_by_pid = std::process::Command::new("taskkill")
-                    .arg("/F")
-                    .arg("/PID")
-                    .arg(pid.to_string())
-                    .stdout(std::process::Stdio::piped())
-                    .stderr(std::process::Stdio::piped())
-                    .status();
-                    
-                if kill_by_pid.is_ok() {
-                    println!("MariaDB stopped successfully by PID");
+            match self.run_command_with_output_capture(mysqladmin_cmd, "stop") {
+                Ok(_) => {
+                    log_message("MariaDB stopped successfully with mysqladmin".to_string());
                     *status_guard = "Stopped".to_string();
                     *self.process_id.lock().unwrap() = None;
                     return;
                 }
+                Err(_) => {
+                    log_message("Failed to stop MariaDB with mysqladmin, trying alternative methods...".to_string());
+                }
             }
             
-            eprintln!("Failed to stop MariaDB with mysqladmin and PID, trying alternative methods...");
+            let mut kill_mysqld = Command::new("taskkill");
+            kill_mysqld
+                .arg("/F")
+                .arg("/IM")
+                .arg("mysqld.exe");
             
-            // Try to kill mysqld process
-            let kill_mysqld = std::process::Command::new("taskkill")
-                .arg("/F")
-                .arg("/IM")
-                .arg("mysqld.exe")
-                .stdout(std::process::Stdio::piped())
-                .stderr(std::process::Stdio::piped())
-                .status();
-                
-            // Try to kill mariadbd process
-            let kill_mariadbd = std::process::Command::new("taskkill")
-                .arg("/F")
-                .arg("/IM")
-                .arg("mariadbd.exe")
-                .stdout(std::process::Stdio::piped())
-                .stderr(std::process::Stdio::piped())
-                .status();
-                
-            if kill_mysqld.is_ok() || kill_mariadbd.is_ok() {
-                println!("MariaDB stopped successfully with taskkill");
-                *status_guard = "Stopped".to_string();
-            } else {
-                eprintln!("Failed to stop MariaDB with taskkill");
-                *status_guard = "Error".to_string();
+            match self.run_command_with_output_capture(kill_mysqld, "stop") {
+                Ok(_) => {
+                    log_message("MariaDB stopped successfully with taskkill (mysqld)".to_string());
+                    *status_guard = "Stopped".to_string();
+                    *self.process_id.lock().unwrap() = None;
+                    return;
+                }
+                Err(_) => {
+                    log_message("Failed to kill mysqld process".to_string());
+                }
             }
+                
+            let mut kill_mariadbd = Command::new("taskkill");
+            kill_mariadbd
+                .arg("/F")
+                .arg("/IM")
+                .arg("mariadbd.exe");
+            
+            match self.run_command_with_output_capture(kill_mariadbd, "stop") {
+                Ok(_) => {
+                    log_message("MariaDB stopped successfully with taskkill (mariadbd)".to_string());
+                    *status_guard = "Stopped".to_string();
+                    *self.process_id.lock().unwrap() = None;
+                    return;
+                }
+                Err(e) => {
+                    log_message(format!("Failed to kill mariadbd process: {}", e));
+                    *status_guard = "Error".to_string();
+                }
+            }
+            
             *self.process_id.lock().unwrap() = None;
         } else {
-            let output = std::process::Command::new(&self.file_path)
-                .arg("-s")
-                .arg("stop")
-                .stdout(std::process::Stdio::piped())
-                .stderr(std::process::Stdio::piped())
-                .status();
-                
-            match output {
+            let mut command = Command::new(&self.file_path);
+            command.arg("-s").arg("stop");
+            
+            match self.run_command_with_output_capture(command, "stop") {
                 Ok(_) => {
+                    log_message(format!("{} stopped successfully", self.name));
                     *status_guard = "Stopped".to_string();
                 }
                 Err(e) => {
-                    eprintln!("Failed to stop {}: {}", self.name, e);
+                    log_message(format!("Failed to stop {}: {}", self.name, e));
                 }
             }
             *self.process_id.lock().unwrap() = None;
