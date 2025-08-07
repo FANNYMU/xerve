@@ -1,13 +1,14 @@
 use crate::services::{Service, ServiceInfo};
 use eframe::egui;
 use std::sync::{Arc, Mutex};
+use std::time::{Duration, Instant};
 
-pub struct XoverApp {
+pub struct XerveApp {
     services: Vec<ServiceInfo>,
     terminal: crate::ui::Terminal,
 }
 
-impl XoverApp {
+impl XerveApp {
     pub fn cleanup_services(&self) {
         self.terminal.add_log("Cleaning up services...".to_string());
         let mut running_services = 0;
@@ -23,6 +24,8 @@ impl XoverApp {
             return;
         }
         
+        self.terminal.add_log(format!("Found {} running services. Stopping all...", running_services));
+        
         for service in &self.services {
             if service.status() == "Running" {
                 self.terminal.add_log(format!("Stopping {}...", service.name));
@@ -31,7 +34,33 @@ impl XoverApp {
         }
         
         self.terminal.add_log("Waiting for services to shut down...".to_string());
-        std::thread::sleep(std::time::Duration::from_millis(3000));
+        
+        let start_time = Instant::now();
+        let timeout = Duration::from_secs(10);
+        let check_interval = Duration::from_millis(500);
+        
+        loop {
+            let mut all_stopped = true;
+            for service in &self.services {
+                if service.status() == "Running" {
+                    all_stopped = false;
+                    break;
+                }
+            }
+            
+            if all_stopped {
+                self.terminal.add_log("All services stopped successfully.".to_string());
+                break;
+            }
+            
+            if start_time.elapsed() >= timeout {
+                self.terminal.add_log("Timeout waiting for services to stop. Some services may still be running.".to_string());
+                break;
+            }
+            
+            std::thread::sleep(check_interval);
+        }
+        
         self.terminal.add_log("Service cleanup completed.".to_string());
     }
     
@@ -40,7 +69,7 @@ impl XoverApp {
     }
 }
 
-impl Default for XoverApp {
+impl Default for XerveApp {
     fn default() -> Self {
         let nginx_dir = std::path::Path::new("./resource/nginx");
         let nginx_pid_file = nginx_dir.join("logs/nginx.pid");
@@ -66,14 +95,14 @@ impl Default for XoverApp {
             "./resource/mariadb/bin/mariadbd.exe",
         );
 
-        XoverApp {
+        XerveApp {
             services: vec![nginx_service, mariadb_service],
             terminal: crate::ui::Terminal::new(),
         }
     }
 }
 
-impl eframe::App for XoverApp {
+impl eframe::App for XerveApp {
     fn on_exit(&mut self, _gl: Option<&eframe::glow::Context>) {
         self.cleanup_services();
     }
