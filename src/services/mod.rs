@@ -43,12 +43,26 @@ impl ServiceInfo {
         }
     }
     
+    #[cfg(windows)]
+    fn hide_window(&self, cmd: &mut Command) {
+        use std::os::windows::process::CommandExt;
+        const CREATE_NO_WINDOW: u32 = 0x08000000;
+        cmd.creation_flags(CREATE_NO_WINDOW);
+    }
+    
+    #[cfg(not(windows))]
+    fn hide_window(&self, _cmd: &mut Command) {
+        // No special handling needed for non-Windows platforms
+    }
+    
     fn run_command_with_output_capture(
         &self,
         mut command: Command,
         operation: &str,
     ) -> Result<Option<std::process::Child>, String> {
         log_message(format!("[{}] Running: {:?}", self.name, command));
+        
+        self.hide_window(&mut command);
 
         match command
             .stdout(Stdio::piped())
