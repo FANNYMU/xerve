@@ -67,6 +67,62 @@ impl XerveApp {
     pub fn get_terminal(&self) -> crate::ui::Terminal {
         self.terminal.clone()
     }
+    
+    fn setup_php_path(&self) {
+        let php_dir = "./resource/php-8.4.11";
+        
+        if !std::path::Path::new(php_dir).exists() {
+            self.terminal.add_log(format!("PHP directory not found at {}. Please ensure PHP is installed in the resource directory.", php_dir));
+            return;
+        }
+        
+        let abs_php_dir = match crate::utils::env_path::get_absolute_path(php_dir) {
+            Ok(path) => path,
+            Err(e) => {
+                self.terminal.add_log(format!("Failed to get absolute path for PHP directory: {}", e));
+                return;
+            }
+        };
+        
+        if crate::utils::env_path::is_in_path(&abs_php_dir) {
+            self.terminal.add_log("PHP is already in PATH.".to_string());
+            return;
+        }
+        
+        #[cfg(windows)]
+        match crate::utils::env_path::add_to_path_permanently(&abs_php_dir) {
+            Ok(()) => {
+                self.terminal.add_log(format!("Successfully added {} to system PATH permanently", abs_php_dir));
+            }
+            Err(e) => {
+                self.terminal.add_log(format!("Failed to permanently add {} to PATH: {}", abs_php_dir, e));
+                self.terminal.add_log("Falling back to session-only PATH setting.".to_string());
+                
+                match crate::utils::env_path::add_to_path(&abs_php_dir) {
+                    Ok(()) => {
+                        self.terminal.add_log(format!("Successfully added {} to current session PATH", abs_php_dir));
+                        self.terminal.add_log("Note: This PATH setting is only valid for the current session.".to_string());
+                        self.terminal.add_log(format!("To make it permanent, run this command in PowerShell as Administrator: {}", 
+                            crate::utils::env_path::get_permanent_path_command(&abs_php_dir)));
+                    }
+                    Err(e) => {
+                        self.terminal.add_log(format!("Failed to add {} to PATH: {}", abs_php_dir, e));
+                    }
+                }
+            }
+        }
+        
+        #[cfg(not(windows))]
+        match crate::utils::env_path::add_to_path(&abs_php_dir) {
+            Ok(()) => {
+                self.terminal.add_log(format!("Successfully added {} to current session PATH", abs_php_dir));
+                self.terminal.add_log("Note: This PATH setting is only valid for the current session.".to_string());
+            }
+            Err(e) => {
+                self.terminal.add_log(format!("Failed to add {} to PATH: {}", abs_php_dir, e));
+            }
+        }
+    }
 }
 
 impl Default for XerveApp {
@@ -95,10 +151,14 @@ impl Default for XerveApp {
             "./resource/mariadb/bin/mariadbd.exe",
         );
 
-        XerveApp {
+        let app = XerveApp {
             services: vec![nginx_service, mariadb_service],
             terminal: crate::ui::Terminal::new(),
-        }
+        };
+        
+        app.setup_php_path();
+        
+        app
     }
 }
 

@@ -360,39 +360,22 @@ impl Service for ServiceInfo {
             }
 
             let mut kill_mysqld = Command::new("taskkill");
-            kill_mysqld.arg("/F").arg("/IM").arg("mysqld.exe");
-
+            kill_mysqld
+                .arg("/F")
+                .arg("/IM")
+                .arg("mariadbd.exe");
+            
             match self.run_command_with_output_capture(kill_mysqld, "stop") {
                 Ok(_) => {
-                    log_message("MariaDB stopped successfully with taskkill (mysqld)".to_string());
+                    log_message("MariaDB stopped successfully with taskkill".to_string());
                     self.update_status("Stopped");
                     *self.process_id.lock().unwrap() = None;
                     return;
                 }
                 Err(_) => {
-                    log_message("Failed to kill mysqld process".to_string());
+                    log_message("Failed to kill mariadbd process".to_string());
                 }
             }
-
-            let mut kill_mariadbd = Command::new("taskkill");
-            kill_mariadbd.arg("/F").arg("/IM").arg("mariadbd.exe");
-
-            match self.run_command_with_output_capture(kill_mariadbd, "stop") {
-                Ok(_) => {
-                    log_message(
-                        "MariaDB stopped successfully with taskkill (mariadbd)".to_string(),
-                    );
-                    self.update_status("Stopped");
-                    *self.process_id.lock().unwrap() = None;
-                    return;
-                }
-                Err(e) => {
-                    log_message(format!("Failed to kill mariadbd process: {}", e));
-                    self.update_status("Error");
-                }
-            }
-
-            *self.process_id.lock().unwrap() = None;
         } else {
             let mut command = Command::new(&self.file_path);
             command.arg("-s").arg("stop");
