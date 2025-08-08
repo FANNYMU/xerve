@@ -1,8 +1,8 @@
-use once_cell::sync::OnceCell;
+use std::sync::{Arc, Mutex};
 use std::io::{BufRead, BufReader};
 use std::process::{Command, Stdio};
-use std::sync::{Arc, Mutex};
-use std::time::Duration;
+use std::time::{Duration, Instant};
+use once_cell::sync::OnceCell;
 
 static TERMINAL: OnceCell<crate::ui::Terminal> = OnceCell::new();
 
@@ -66,7 +66,7 @@ impl ServiceInfo {
         operation: &str,
     ) -> Result<Option<std::process::Child>, String> {
         log_message(format!("[{}] Running: {:?}", self.name, command));
-
+        
         self.hide_window(&mut command);
 
         match command
@@ -85,16 +85,13 @@ impl ServiceInfo {
                                     log_message(format!("[{}] {}", service_name, line));
                                 }
                                 Err(e) => {
-                                    log_message(format!(
-                                        "[{}] Error reading stdout: {}",
-                                        service_name, e
-                                    ));
+                                    log_message(format!("[{}] Error reading stdout: {}", service_name, e));
                                 }
                             }
                         }
                     });
                 }
-
+                
                 if let Some(stderr) = child.stderr.take() {
                     let service_name = self.name.clone();
                     std::thread::spawn(move || {
@@ -105,33 +102,36 @@ impl ServiceInfo {
                                     log_message(format!("[{}] STDERR: {}", service_name, line));
                                 }
                                 Err(e) => {
-                                    log_message(format!(
-                                        "[{}] Error reading stderr: {}",
-                                        service_name, e
-                                    ));
+                                    log_message(format!("[{}] Error reading stderr: {}", service_name, e));
                                 }
                             }
                         }
                     });
                 }
-
+                
                 if operation == "start" && (self.name == "MariaDB" || self.name == "Nginx") {
                     Ok(Some(child))
                 } else {
-                    match child.wait() {
-                        Ok(status) => {
-                            log_message(format!(
-                                "[{}] Process finished with status: {}",
-                                self.name, status
-                            ));
-                            Ok(None)
+                    let start_time = Instant::now();
+                    let timeout = Duration::from_secs(30);
+                    
+                    loop {
+                        if start_time.elapsed() >= timeout {
+                            return Err("Process wait timeout exceeded".to_string());
                         }
-                        Err(e) => {
-                            log_message(format!(
-                                "[{}] Error waiting for process: {}",
-                                self.name, e
-                            ));
-                            Err(e.to_string())
+                        
+                        match child.try_wait() {
+                            Ok(Some(status)) => {
+                                log_message(format!("[{}] Process finished with status: {}", self.name, status));
+                                return Ok(None);
+                            }
+                            Ok(None) => {
+                                std::thread::sleep(Duration::from_millis(100));
+                            }
+                            Err(e) => {
+                                log_message(format!("[{}] Error waiting for process: {}", self.name, e));
+                                return Err(e.to_string());
+                            }
                         }
                     }
                 }
@@ -145,18 +145,38 @@ impl ServiceInfo {
     }
 
     fn update_status(&self, new_status: &str) {
-        let mut status_guard = self.status.lock().unwrap();
-        *status_guard = new_status.to_string();
+        match self.status.lock() {
+            Ok(mut status_guard) => {
+                *status_guard = new_status.to_string();
+            }
+            Err(e) => {
+                log_message(format!("Failed to acquire status lock: {}", e));
+            }
+        }
     }
-
+    
     fn is_running(&self) -> bool {
-        let status_guard = self.status.lock().unwrap();
-        *status_guard == "Running"
+        match self.status.lock() {
+            Ok(status_guard) => {
+                *status_guard == "Running"
+            }
+            Err(e) => {
+                log_message(format!("Failed to acquire status lock: {}", e));
+                false 
+            }
+        }
     }
-
+    
     fn is_stopped(&self) -> bool {
-        let status_guard = self.status.lock().unwrap();
-        *status_guard == "Stopped"
+        match self.status.lock() {
+            Ok(status_guard) => {
+                *status_guard == "Stopped"
+            }
+            Err(e) => {
+                log_message(format!("Failed to acquire status lock: {}", e));
+                true 
+            }
+        }
     }
 }
 
@@ -248,7 +268,14 @@ impl Service for ServiceInfo {
             match self.run_command_with_output_capture(command, "start") {
                 Ok(Some(mut child)) => {
                     let pid = child.id();
-                    *self.process_id.lock().unwrap() = Some(pid);
+                    match self.process_id.lock() {
+                        Ok(mut process_id_guard) => {
+                            *process_id_guard = Some(pid);
+                        }
+                        Err(e) => {
+                            log_message(format!("Failed to acquire process_id lock: {}", e));
+                        }
+                    }
 
                     let service_name = self.name.clone();
                     let status_arc = Arc::clone(&self.status);
@@ -309,7 +336,14 @@ impl Service for ServiceInfo {
 
         if self.is_stopped() {
             log_message(format!("{} is already stopped", self.name));
-            *self.process_id.lock().unwrap() = None;
+            match self.process_id.lock() {
+                Ok(mut process_id_guard) => {
+                    *process_id_guard = None;
+                }
+                Err(e) => {
+                    log_message(format!("Failed to acquire process_id lock: {}", e));
+                }
+            }
             return;
         }
 
@@ -337,7 +371,14 @@ impl Service for ServiceInfo {
                     self.update_status("Error");
                 }
             }
-            *self.process_id.lock().unwrap() = None;
+            match self.process_id.lock() {
+                Ok(mut process_id_guard) => {
+                    *process_id_guard = None;
+                }
+                Err(e) => {
+                    log_message(format!("Failed to acquire process_id lock: {}", e));
+                }
+            }
         } else if self.name == "MariaDB" {
             let mariadb_dir = std::path::Path::new("./resource/mariadb");
 
@@ -353,7 +394,14 @@ impl Service for ServiceInfo {
                 Ok(_) => {
                     log_message("MariaDB stopped successfully with mysqladmin".to_string());
                     self.update_status("Stopped");
-                    *self.process_id.lock().unwrap() = None;
+                    match self.process_id.lock() {
+                        Ok(mut process_id_guard) => {
+                            *process_id_guard = None;
+                        }
+                        Err(e) => {
+                            log_message(format!("Failed to acquire process_id lock: {}", e));
+                        }
+                    }
                     return;
                 }
                 Err(_) => {
@@ -364,21 +412,39 @@ impl Service for ServiceInfo {
                 }
             }
 
-            let mut kill_mysqld = Command::new("taskkill");
-            kill_mysqld
+            let mut kill_mariadbd = Command::new("taskkill");
+            kill_mariadbd
                 .arg("/F")
                 .arg("/IM")
                 .arg("mariadbd.exe");
             
-            match self.run_command_with_output_capture(kill_mysqld, "stop") {
+            match self.run_command_with_output_capture(kill_mariadbd, "stop") {
                 Ok(_) => {
-                    log_message("MariaDB stopped successfully with taskkill".to_string());
+                    log_message(
+                        "MariaDB stopped successfully with taskkill (mariadbd)".to_string(),
+                    );
                     self.update_status("Stopped");
-                    *self.process_id.lock().unwrap() = None;
+                    match self.process_id.lock() {
+                        Ok(mut process_id_guard) => {
+                            *process_id_guard = None;
+                        }
+                        Err(e) => {
+                            log_message(format!("Failed to acquire process_id lock: {}", e));
+                        }
+                    }
                     return;
                 }
                 Err(_) => {
                     log_message("Failed to kill mariadbd process".to_string());
+                }
+            }
+            
+            match self.process_id.lock() {
+                Ok(mut process_id_guard) => {
+                    *process_id_guard = None;
+                }
+                Err(e) => {
+                    log_message(format!("Failed to acquire process_id lock: {}", e));
                 }
             }
         } else {
@@ -395,11 +461,24 @@ impl Service for ServiceInfo {
                     self.update_status("Error");
                 }
             }
-            *self.process_id.lock().unwrap() = None;
+            match self.process_id.lock() {
+                Ok(mut process_id_guard) => {
+                    *process_id_guard = None;
+                }
+                Err(e) => {
+                    log_message(format!("Failed to acquire process_id lock: {}", e));
+                }
+            }
         }
     }
 
     fn status(&self) -> String {
-        self.status.lock().unwrap().clone()
+        match self.status.lock() {
+            Ok(status_guard) => status_guard.clone(),
+            Err(e) => {
+                log_message(format!("Failed to acquire status lock: {}", e));
+                "Error".to_string()
+            }
+        }
     }
 }
