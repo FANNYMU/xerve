@@ -42,7 +42,12 @@ impl ServiceInfo {
             process_id: Arc::new(Mutex::new(None)),
         }
     }
-
+    
+    pub fn update_status_static(status_arc: Arc<Mutex<String>>, new_status: &str) {
+        let mut status_guard = status_arc.lock().unwrap();
+        *status_guard = new_status.to_string();
+    }
+    
     #[cfg(windows)]
     fn hide_window(&self, cmd: &mut Command) {
         use std::os::windows::process::CommandExt;
@@ -262,7 +267,7 @@ impl Service for ServiceInfo {
                                 ));
                             }
                         }
-                        *status_arc.lock().unwrap() = "Stopped".to_string();
+                        ServiceInfo::update_status_static(status_arc, "Stopped");
                         log_message(format!(
                             "{} status set to Stopped after process exit.",
                             service_name
