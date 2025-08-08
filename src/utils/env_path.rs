@@ -28,10 +28,10 @@ pub fn get_absolute_path(relative_path: &str) -> Result<String, String> {
                     };
                     Ok(clean_path.to_string())
                 },
-                None => Err("Failed to convert path to string".to_string())
+                None => Err("Failed to convert path to string. This may happen if the path contains invalid UTF-8 characters.".to_string())
             }
         },
-        Err(e) => Err(format!("Failed to get absolute path: {}", e))
+        Err(e) => Err(format!("Failed to get absolute path: {}. Check if the path exists and you have sufficient permissions.", e))
     }
 }
 
@@ -41,7 +41,7 @@ pub fn add_to_path_permanently(dir: &str) -> Result<(), String> {
     use std::process::Command;
     
     if !Path::new(dir).exists() {
-        return Err(format!("Directory {} does not exist", dir));
+        return Err(format!("Directory '{}' does not exist. Please check if the path is correct and the directory exists.", dir));
     }
     
     if is_in_path(dir) {
@@ -64,7 +64,7 @@ pub fn add_to_path_permanently(dir: &str) -> Result<(), String> {
     #[cfg(windows)]
     {
         use std::os::windows::process::CommandExt;
-        command.creation_flags(0x08000000); // CREATE_NO_WINDOW
+        command.creation_flags(0x08000000);
     }
     
     let output = command.output();
@@ -75,17 +75,17 @@ pub fn add_to_path_permanently(dir: &str) -> Result<(), String> {
                 Ok(())
             } else {
                 let error = String::from_utf8_lossy(&output.stderr);
-                Err(format!("Failed to set PATH: {}", error))
+                Err(format!("Failed to set PATH: {}. PowerShell command failed with error.", error))
             }
         }
-        Err(e) => Err(format!("Failed to execute PowerShell command: {}", e))
+        Err(e) => Err(format!("Failed to execute PowerShell command: {}. This may happen if PowerShell is not available or accessible.", e))
     }
 }
 
 
 pub fn add_to_path(dir: &str) -> Result<(), String> {
     if !Path::new(dir).exists() {
-        return Err(format!("Directory {} does not exist", dir));
+        return Err(format!("Directory '{}' does not exist. Please check if the path is correct and the directory exists.", dir));
     }
     
     if is_in_path(dir) {

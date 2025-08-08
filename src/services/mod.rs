@@ -247,11 +247,15 @@ impl Service for ServiceInfo {
                 }
             }
 
-            if !data_dir.exists()
-                || std::fs::read_dir(&data_dir)
-                    .map(|mut d| d.next().is_none())
-                    .unwrap_or(true)
-            {
+            let is_data_dir_empty = match std::fs::read_dir(&data_dir) {
+                Ok(mut dir) => dir.next().is_none(),
+                Err(e) => {
+                    log_message(format!("Failed to read MariaDB data directory: {}", e));
+                    true
+                }
+            };
+
+            if !data_dir.exists() || is_data_dir_empty {
                 log_message(
                     "MariaDB data directory is missing or empty. Cannot start service.".to_string(),
                 );
