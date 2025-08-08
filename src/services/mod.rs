@@ -1,8 +1,8 @@
-use std::sync::{Arc, Mutex};
+use once_cell::sync::OnceCell;
 use std::io::{BufRead, BufReader};
 use std::process::{Command, Stdio};
+use std::sync::{Arc, Mutex};
 use std::time::Duration;
-use once_cell::sync::OnceCell;
 
 static TERMINAL: OnceCell<crate::ui::Terminal> = OnceCell::new();
 
@@ -42,26 +42,26 @@ impl ServiceInfo {
             process_id: Arc::new(Mutex::new(None)),
         }
     }
-    
+
     #[cfg(windows)]
     fn hide_window(&self, cmd: &mut Command) {
         use std::os::windows::process::CommandExt;
         const CREATE_NO_WINDOW: u32 = 0x08000000;
         cmd.creation_flags(CREATE_NO_WINDOW);
     }
-    
+
     #[cfg(not(windows))]
     fn hide_window(&self, _cmd: &mut Command) {
         // No special handling needed for non-Windows platforms
     }
-    
+
     fn run_command_with_output_capture(
         &self,
         mut command: Command,
         operation: &str,
     ) -> Result<Option<std::process::Child>, String> {
         log_message(format!("[{}] Running: {:?}", self.name, command));
-        
+
         self.hide_window(&mut command);
 
         match command
@@ -80,13 +80,16 @@ impl ServiceInfo {
                                     log_message(format!("[{}] {}", service_name, line));
                                 }
                                 Err(e) => {
-                                    log_message(format!("[{}] Error reading stdout: {}", service_name, e));
+                                    log_message(format!(
+                                        "[{}] Error reading stdout: {}",
+                                        service_name, e
+                                    ));
                                 }
                             }
                         }
                     });
                 }
-                
+
                 if let Some(stderr) = child.stderr.take() {
                     let service_name = self.name.clone();
                     std::thread::spawn(move || {
@@ -97,23 +100,32 @@ impl ServiceInfo {
                                     log_message(format!("[{}] STDERR: {}", service_name, line));
                                 }
                                 Err(e) => {
-                                    log_message(format!("[{}] Error reading stderr: {}", service_name, e));
+                                    log_message(format!(
+                                        "[{}] Error reading stderr: {}",
+                                        service_name, e
+                                    ));
                                 }
                             }
                         }
                     });
                 }
-                
+
                 if operation == "start" && (self.name == "MariaDB" || self.name == "Nginx") {
                     Ok(Some(child))
                 } else {
                     match child.wait() {
                         Ok(status) => {
-                            log_message(format!("[{}] Process finished with status: {}", self.name, status));
+                            log_message(format!(
+                                "[{}] Process finished with status: {}",
+                                self.name, status
+                            ));
                             Ok(None)
                         }
                         Err(e) => {
-                            log_message(format!("[{}] Error waiting for process: {}", self.name, e));
+                            log_message(format!(
+                                "[{}] Error waiting for process: {}",
+                                self.name, e
+                            ));
                             Err(e.to_string())
                         }
                     }
@@ -126,17 +138,17 @@ impl ServiceInfo {
             }
         }
     }
-    
+
     fn update_status(&self, new_status: &str) {
         let mut status_guard = self.status.lock().unwrap();
         *status_guard = new_status.to_string();
     }
-    
+
     fn is_running(&self) -> bool {
         let status_guard = self.status.lock().unwrap();
         *status_guard == "Running"
     }
-    
+
     fn is_stopped(&self) -> bool {
         let status_guard = self.status.lock().unwrap();
         *status_guard == "Stopped"
@@ -154,13 +166,13 @@ impl Service for ServiceInfo {
 
         if self.name == "Nginx" {
             let nginx_dir = std::path::Path::new("./resource/nginx");
-            
+
             let mut command = Command::new(&self.file_path);
             command
                 .current_dir(nginx_dir)
                 .arg("-c")
                 .arg("conf/nginx.conf");
-            
+
             match self.run_command_with_output_capture(command, "start") {
                 Ok(_) => {
                     log_message("Nginx started successfully".to_string());
@@ -178,7 +190,7 @@ impl Service for ServiceInfo {
             let _data_dir_created = false;
             if !data_dir.exists() {
                 log_message("MariaDB data directory not found. Initializing...".to_string());
-                
+
                 if let Err(e) = std::fs::create_dir_all(&data_dir) {
                     log_message(format!("Failed to create MariaDB data directory: {}", e));
                     self.update_status("Error");
@@ -189,7 +201,7 @@ impl Service for ServiceInfo {
                 init_command
                     .arg("--datadir=./data")
                     .current_dir(&mariadb_dir);
-                
+
                 match self.run_command_with_output_capture(init_command, "init") {
                     Ok(_) => {
                         log_message("MariaDB initialized successfully".to_string());
@@ -197,7 +209,10 @@ impl Service for ServiceInfo {
                     Err(e) => {
                         log_message(format!("MariaDB initialization failed: {}", e));
                         if let Err(e) = std::fs::remove_dir_all(&data_dir) {
-                            log_message(format!("Failed to rollback MariaDB data directory: {}", e));
+                            log_message(format!(
+                                "Failed to rollback MariaDB data directory: {}",
+                                e
+                            ));
                         } else {
                             log_message("Rolled back MariaDB data directory.".to_string());
                         }
@@ -207,8 +222,14 @@ impl Service for ServiceInfo {
                 }
             }
 
-            if !data_dir.exists() || std::fs::read_dir(&data_dir).map(|mut d| d.next().is_none()).unwrap_or(true) {
-                log_message("MariaDB data directory is missing or empty. Cannot start service.".to_string());
+            if !data_dir.exists()
+                || std::fs::read_dir(&data_dir)
+                    .map(|mut d| d.next().is_none())
+                    .unwrap_or(true)
+            {
+                log_message(
+                    "MariaDB data directory is missing or empty. Cannot start service.".to_string(),
+                );
                 self.update_status("Error");
                 return;
             }
@@ -218,27 +239,36 @@ impl Service for ServiceInfo {
             command
                 .current_dir(&mariadb_dir)
                 .arg("--defaults-file=my.ini");
-            
+
             match self.run_command_with_output_capture(command, "start") {
                 Ok(Some(mut child)) => {
                     let pid = child.id();
                     *self.process_id.lock().unwrap() = Some(pid);
-                    
+
                     let service_name = self.name.clone();
                     let status_arc = Arc::clone(&self.status);
                     std::thread::spawn(move || {
                         match child.wait() {
                             Ok(exit_status) => {
-                                log_message(format!("{} process exited with status: {}", service_name, exit_status));
+                                log_message(format!(
+                                    "{} process exited with status: {}",
+                                    service_name, exit_status
+                                ));
                             }
                             Err(e) => {
-                                log_message(format!("Error waiting for {} process: {}", service_name, e));
+                                log_message(format!(
+                                    "Error waiting for {} process: {}",
+                                    service_name, e
+                                ));
                             }
                         }
                         *status_arc.lock().unwrap() = "Stopped".to_string();
-                        log_message(format!("{} status set to Stopped after process exit.", service_name));
+                        log_message(format!(
+                            "{} status set to Stopped after process exit.",
+                            service_name
+                        ));
                     });
-                    
+
                     std::thread::sleep(Duration::from_millis(500));
                     log_message(format!("MariaDB started successfully with PID: {}", pid));
                     self.update_status("Running");
@@ -252,11 +282,10 @@ impl Service for ServiceInfo {
                     self.update_status("Error");
                 }
             }
-        }
-        else {
+        } else {
             let mut command = Command::new(&self.file_path);
             command.arg("-s").arg("start");
-            
+
             match self.run_command_with_output_capture(command, "start") {
                 Ok(_) => {
                     log_message(format!("{} started successfully", self.name));
@@ -278,10 +307,10 @@ impl Service for ServiceInfo {
             *self.process_id.lock().unwrap() = None;
             return;
         }
-        
+
         if self.name == "Nginx" {
             let nginx_dir = std::path::Path::new("./resource/nginx");
-            
+
             let pid_file = nginx_dir.join("logs/nginx.pid");
             if !pid_file.exists() {
                 log_message("Nginx PID file not found, assuming Nginx is not running. Setting status to Stopped.".to_string());
@@ -289,13 +318,10 @@ impl Service for ServiceInfo {
                 *self.process_id.lock().unwrap() = None;
                 return;
             }
-            
+
             let mut command = Command::new(&self.file_path);
-            command
-                .current_dir(nginx_dir)
-                .arg("-s")
-                .arg("stop");
-            
+            command.current_dir(nginx_dir).arg("-s").arg("stop");
+
             match self.run_command_with_output_capture(command, "stop") {
                 Ok(_) => {
                     log_message("Nginx stopped successfully".to_string());
@@ -309,7 +335,7 @@ impl Service for ServiceInfo {
             *self.process_id.lock().unwrap() = None;
         } else if self.name == "MariaDB" {
             let mariadb_dir = std::path::Path::new("./resource/mariadb");
-            
+
             log_message("Attempting to stop MariaDB with mysqladmin...".to_string());
             let mut mysqladmin_cmd = Command::new(mariadb_dir.join("bin/mysqladmin.exe"));
             mysqladmin_cmd
@@ -317,7 +343,7 @@ impl Service for ServiceInfo {
                 .arg("-u")
                 .arg("root")
                 .arg("shutdown");
-            
+
             match self.run_command_with_output_capture(mysqladmin_cmd, "stop") {
                 Ok(_) => {
                     log_message("MariaDB stopped successfully with mysqladmin".to_string());
@@ -326,16 +352,16 @@ impl Service for ServiceInfo {
                     return;
                 }
                 Err(_) => {
-                    log_message("Failed to stop MariaDB with mysqladmin, trying alternative methods...".to_string());
+                    log_message(
+                        "Failed to stop MariaDB with mysqladmin, trying alternative methods..."
+                            .to_string(),
+                    );
                 }
             }
-            
+
             let mut kill_mysqld = Command::new("taskkill");
-            kill_mysqld
-                .arg("/F")
-                .arg("/IM")
-                .arg("mysqld.exe");
-            
+            kill_mysqld.arg("/F").arg("/IM").arg("mysqld.exe");
+
             match self.run_command_with_output_capture(kill_mysqld, "stop") {
                 Ok(_) => {
                     log_message("MariaDB stopped successfully with taskkill (mysqld)".to_string());
@@ -347,16 +373,15 @@ impl Service for ServiceInfo {
                     log_message("Failed to kill mysqld process".to_string());
                 }
             }
-                
+
             let mut kill_mariadbd = Command::new("taskkill");
-            kill_mariadbd
-                .arg("/F")
-                .arg("/IM")
-                .arg("mariadbd.exe");
-            
+            kill_mariadbd.arg("/F").arg("/IM").arg("mariadbd.exe");
+
             match self.run_command_with_output_capture(kill_mariadbd, "stop") {
                 Ok(_) => {
-                    log_message("MariaDB stopped successfully with taskkill (mariadbd)".to_string());
+                    log_message(
+                        "MariaDB stopped successfully with taskkill (mariadbd)".to_string(),
+                    );
                     self.update_status("Stopped");
                     *self.process_id.lock().unwrap() = None;
                     return;
@@ -366,12 +391,12 @@ impl Service for ServiceInfo {
                     self.update_status("Error");
                 }
             }
-            
+
             *self.process_id.lock().unwrap() = None;
         } else {
             let mut command = Command::new(&self.file_path);
             command.arg("-s").arg("stop");
-            
+
             match self.run_command_with_output_capture(command, "stop") {
                 Ok(_) => {
                     log_message(format!("{} stopped successfully", self.name));
