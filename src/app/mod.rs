@@ -2,10 +2,12 @@ use crate::services::{Service, ServiceInfo};
 use eframe::egui;
 use std::sync::{Arc, Mutex};
 use std::time::{Duration, Instant};
+use std::process::{Command, Stdio};
 
 pub struct XerveApp {
     services: Vec<ServiceInfo>,
     terminal: crate::ui::Terminal,
+    _php_cgi_process: Option<std::process::Child>,
 }
 
 impl XerveApp {
@@ -123,6 +125,40 @@ impl XerveApp {
             }
         }
     }
+    
+    fn start_php_cgi(&mut self) {
+        let php_cgi_path = "./resource/php-8.4.11/php-cgi.exe";
+        if !std::path::Path::new(php_cgi_path).exists() {
+            self.terminal.add_log(format!("PHP-CGI not found at {}. Skipping PHP-CGI startup.", php_cgi_path));
+            return;
+        }
+        
+        let mut command = Command::new(php_cgi_path);
+        command
+            .arg("-b")
+            .arg("127.0.0.1:9000")
+            .arg("-c")
+            .arg("./resource/php-8.4.11/php.ini")
+            .stdout(Stdio::piped())
+            .stderr(Stdio::piped());
+        
+        #[cfg(windows)]
+        {
+            use std::os::windows::process::CommandExt;
+            command.creation_flags(0x08000000); // CREATE_NO_WINDOW
+        }
+        
+        match command.spawn() {
+            Ok(child) => {
+                self._php_cgi_process = Some(child);
+                
+                self.terminal.add_log("PHP-CGI started in background on 127.0.0.1:9000".to_string());
+            }
+            Err(e) => {
+                self.terminal.add_log(format!("Failed to start PHP-CGI: {}", e));
+            }
+        }
+    }
 }
 
 impl Default for XerveApp {
@@ -151,12 +187,14 @@ impl Default for XerveApp {
             "./resource/mariadb/bin/mariadbd.exe",
         );
 
-        let app = XerveApp {
+        let mut app = XerveApp {
             services: vec![nginx_service, mariadb_service],
             terminal: crate::ui::Terminal::new(),
+            _php_cgi_process: None,
         };
         
         app.setup_php_path();
+        app.start_php_cgi();
         
         app
     }
