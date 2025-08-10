@@ -3,6 +3,7 @@ use eframe::egui;
 use std::sync::{Arc, Mutex};
 use std::time::{Duration, Instant};
 use std::process::{Command, Stdio};
+use open;
 
 pub struct XerveApp {
     services: Vec<ServiceInfo>,
@@ -261,6 +262,78 @@ impl eframe::App for XerveApp {
                         for service in &self.services {
                             service_row.render(service);
                         }
+                    });
+
+                ui.add_space(20.0);
+                egui::Frame::group(ui.style())
+                    .fill(egui::Color32::from_rgb(30, 30, 30))
+                    .stroke(egui::Stroke::new(1.0, egui::Color32::from_rgb(60, 60, 60)))
+                    .corner_radius(12.0)
+                    .inner_margin(egui::Margin::symmetric(10i8, 10i8))
+                    .show(ui, |ui| {
+                        ui.set_min_width(620.0);
+                        ui.add_space(10.0);
+                        
+                        ui.label(
+                            egui::RichText::new("Tools")
+                                .size(22.0)
+                                .strong()
+                                .color(egui::Color32::from_rgb(230, 230, 230)),
+                        );
+                        ui.add_space(15.0);
+
+                        ui.horizontal(|ui| {
+                            ui.add_space(20.0);
+                            
+                            if ui
+                                .add(
+                                    egui::Button::new(
+                                        egui::RichText::new("Open htdocs")
+                                            .color(egui::Color32::WHITE)
+                                            .size(14.0),
+                                    )
+                                    .fill(egui::Color32::from_rgb(40, 167, 69))
+                                    .min_size(egui::vec2(120.0, 36.0))
+                                    .corner_radius(8.0),
+                                )
+                                .clicked()
+                            {
+                                let htdocs_path = "resource\\nginx\\htdocs";
+                                if std::path::Path::new(htdocs_path).exists() {
+                                    match open::that(htdocs_path) {
+                                        Ok(_) => self.terminal.add_log("Opening htdocs folder...".to_string()),
+                                        Err(e) => self.terminal.add_log(format!("Failed to open htdocs folder: {}", e)),
+                                    }
+                                } else {
+                                    self.terminal.add_log("htdocs folder not found.".to_string());
+                                }
+                            }
+                            
+                            ui.add_space(15.0);
+                            
+                            if ui
+                                .add(
+                                    egui::Button::new(
+                                        egui::RichText::new("Open phpMyAdmin")
+                                            .color(egui::Color32::WHITE)
+                                            .size(14.0),
+                                    )
+                                    .fill(egui::Color32::from_rgb(0, 123, 255))
+                                    .min_size(egui::vec2(160.0, 36.0))
+                                    .corner_radius(8.0),
+                                )
+                                .clicked()
+                            {
+                                match open::that("http://localhost/phpmyadmin/") {
+                                    Ok(_) => self.terminal.add_log("Opening phpMyAdmin in browser...".to_string()),
+                                    Err(e) => self.terminal.add_log(format!("Failed to open phpMyAdmin: {}", e)),
+                                }
+                            }
+                            
+                            ui.add_space(20.0);
+                        });
+                        
+                        ui.add_space(10.0);
                     });
 
                 ui.add_space(20.0);
