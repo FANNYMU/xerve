@@ -224,130 +224,134 @@ impl eframe::App for XerveApp {
         });
 
         egui::CentralPanel::default().show(ctx, |ui| {
-            ui.add_space(30.0);
-            ui.vertical_centered(|ui| {
-                ui.heading(
-                    egui::RichText::new("Xerve")
-                        .size(48.0)
-                        .strong()
-                        .color(egui::Color32::from_rgb(80, 180, 255)),
-                );
-                
-                ui.label(
-                    egui::RichText::new("Elegant Local Development Platform")
-                        .size(16.0)
-                        .italics()
-                        .color(egui::Color32::from_rgb(160, 160, 160)),
-                );
-                ui.add_space(20.0);
-
-                egui::Frame::group(ui.style())
-                    .fill(egui::Color32::from_rgb(30, 30, 30))
-                    .stroke(egui::Stroke::new(1.0, egui::Color32::from_rgb(60, 60, 60)))
-                    .corner_radius(12.0)
-                    .inner_margin(egui::Margin::symmetric(10i8, 10i8))
-                    .show(ui, |ui| {
-                        ui.set_min_width(620.0);
-                        ui.add_space(10.0);
+            egui::ScrollArea::vertical()
+                .auto_shrink([false; 2])
+                .show(ui, |ui| {
+                    ui.add_space(30.0);
+                    ui.vertical_centered(|ui| {
+                        ui.heading(
+                            egui::RichText::new("Xerve")
+                                .size(48.0)
+                                .strong()
+                                .color(egui::Color32::from_rgb(80, 180, 255)),
+                        );
                         
                         ui.label(
-                            egui::RichText::new("Services")
-                                .size(22.0)
-                                .strong()
-                                .color(egui::Color32::from_rgb(230, 230, 230)),
+                            egui::RichText::new("Elegant Local Development Platform")
+                                .size(16.0)
+                                .italics()
+                                .color(egui::Color32::from_rgb(160, 160, 160)),
                         );
-                        ui.add_space(15.0);
+                        ui.add_space(20.0);
 
-                        let mut service_row = crate::ui::ServiceRow::new(ui);
-                        for service in &self.services {
-                            service_row.render(service);
-                        }
-                    });
+                        egui::Frame::group(ui.style())
+                            .fill(egui::Color32::from_rgb(30, 30, 30))
+                            .stroke(egui::Stroke::new(1.0, egui::Color32::from_rgb(60, 60, 60)))
+                            .corner_radius(12.0)
+                            .inner_margin(egui::Margin::symmetric(10i8, 10i8))
+                            .show(ui, |ui| {
+                                ui.set_min_width(620.0);
+                                ui.add_space(10.0);
+                                
+                                ui.label(
+                                    egui::RichText::new("Services")
+                                        .size(22.0)
+                                        .strong()
+                                        .color(egui::Color32::from_rgb(230, 230, 230)),
+                                );
+                                ui.add_space(15.0);
 
-                ui.add_space(20.0);
-                egui::Frame::group(ui.style())
-                    .fill(egui::Color32::from_rgb(30, 30, 30))
-                    .stroke(egui::Stroke::new(1.0, egui::Color32::from_rgb(60, 60, 60)))
-                    .corner_radius(12.0)
-                    .inner_margin(egui::Margin::symmetric(10i8, 10i8))
-                    .show(ui, |ui| {
-                        ui.set_min_width(620.0);
-                        ui.add_space(10.0);
-                        
-                        ui.label(
-                            egui::RichText::new("Tools")
-                                .size(22.0)
-                                .strong()
-                                .color(egui::Color32::from_rgb(230, 230, 230)),
-                        );
-                        ui.add_space(15.0);
+                                let mut service_row = crate::ui::ServiceRow::new(ui);
+                                for service in &self.services {
+                                    service_row.render(service);
+                                }
+                            });
 
-                        ui.horizontal(|ui| {
-                            ui.add_space(20.0);
-                            
-                            if ui
-                                .add(
-                                    egui::Button::new(
-                                        egui::RichText::new("Open htdocs")
-                                            .color(egui::Color32::WHITE)
-                                            .size(14.0),
-                                    )
-                                    .fill(egui::Color32::from_rgb(40, 167, 69))
-                                    .min_size(egui::vec2(120.0, 36.0))
-                                    .corner_radius(8.0),
-                                )
-                                .clicked()
-                            {
-                                let htdocs_path = "resource\\nginx\\htdocs";
-                                if std::path::Path::new(htdocs_path).exists() {
-                                    match open::that(htdocs_path) {
-                                        Ok(_) => self.terminal.add_log("Opening htdocs folder...".to_string()),
-                                        Err(e) => self.terminal.add_log(format!("Failed to open htdocs folder: {}", e)),
+                        ui.add_space(20.0);
+                        egui::Frame::group(ui.style())
+                            .fill(egui::Color32::from_rgb(30, 30, 30))
+                            .stroke(egui::Stroke::new(1.0, egui::Color32::from_rgb(60, 60, 60)))
+                            .corner_radius(12.0)
+                            .inner_margin(egui::Margin::symmetric(10i8, 10i8))
+                            .show(ui, |ui| {
+                                ui.set_min_width(620.0);
+                                ui.add_space(10.0);
+                                
+                                ui.label(
+                                    egui::RichText::new("Tools")
+                                        .size(22.0)
+                                        .strong()
+                                        .color(egui::Color32::from_rgb(230, 230, 230)),
+                                );
+                                ui.add_space(15.0);
+
+                                ui.horizontal(|ui| {
+                                    ui.add_space(20.0);
+                                    
+                                    if ui
+                                        .add(
+                                            egui::Button::new(
+                                                egui::RichText::new("Open htdocs")
+                                                    .color(egui::Color32::WHITE)
+                                                    .size(14.0),
+                                            )
+                                            .fill(egui::Color32::from_rgb(40, 167, 69))
+                                            .min_size(egui::vec2(120.0, 36.0))
+                                            .corner_radius(8.0),
+                                        )
+                                        .clicked()
+                                    {
+                                        let htdocs_path = "resource\\nginx\\htdocs";
+                                        if std::path::Path::new(htdocs_path).exists() {
+                                            match open::that(htdocs_path) {
+                                                Ok(_) => self.terminal.add_log("Opening htdocs folder...".to_string()),
+                                                Err(e) => self.terminal.add_log(format!("Failed to open htdocs folder: {}", e)),
+                                            }
+                                        } else {
+                                            self.terminal.add_log("htdocs folder not found.".to_string());
+                                        }
                                     }
-                                } else {
-                                    self.terminal.add_log("htdocs folder not found.".to_string());
-                                }
-                            }
-                            
-                            ui.add_space(15.0);
-                            
-                            if ui
-                                .add(
-                                    egui::Button::new(
-                                        egui::RichText::new("Open phpMyAdmin")
-                                            .color(egui::Color32::WHITE)
-                                            .size(14.0),
-                                    )
-                                    .fill(egui::Color32::from_rgb(0, 123, 255))
-                                    .min_size(egui::vec2(160.0, 36.0))
-                                    .corner_radius(8.0),
-                                )
-                                .clicked()
-                            {
-                                match open::that("http://localhost/phpmyadmin/") {
-                                    Ok(_) => self.terminal.add_log("Opening phpMyAdmin in browser...".to_string()),
-                                    Err(e) => self.terminal.add_log(format!("Failed to open phpMyAdmin: {}", e)),
-                                }
-                            }
-                            
-                            ui.add_space(20.0);
-                        });
+                                    
+                                    ui.add_space(15.0);
+                                    
+                                    if ui
+                                        .add(
+                                            egui::Button::new(
+                                                egui::RichText::new("Open phpMyAdmin")
+                                                    .color(egui::Color32::WHITE)
+                                                    .size(14.0),
+                                            )
+                                            .fill(egui::Color32::from_rgb(0, 123, 255))
+                                            .min_size(egui::vec2(160.0, 36.0))
+                                            .corner_radius(8.0),
+                                        )
+                                        .clicked()
+                                    {
+                                        match open::that("http://localhost/phpmyadmin/") {
+                                            Ok(_) => self.terminal.add_log("Opening phpMyAdmin in browser...".to_string()),
+                                            Err(e) => self.terminal.add_log(format!("Failed to open phpMyAdmin: {}", e)),
+                                        }
+                                    }
+                                    
+                                    ui.add_space(20.0);
+                                });
+                                
+                                ui.add_space(10.0);
+                            });
+
+                        ui.add_space(20.0);
                         
-                        ui.add_space(10.0);
+                        self.terminal.render(ui);
+
+                        ui.add_space(25.0);
+                        
+                        ui.label(
+                            egui::RichText::new("v1.0.0")
+                                .size(12.0)
+                                .color(egui::Color32::from_rgb(100, 100, 100)),
+                        );
                     });
-
-                ui.add_space(20.0);
-                
-                self.terminal.render(ui);
-
-                ui.add_space(25.0);
-                
-                ui.label(
-                    egui::RichText::new("v1.0.0")
-                        .size(12.0)
-                        .color(egui::Color32::from_rgb(100, 100, 100)),
-                );
-            });
+                });
         });
     }
 }
