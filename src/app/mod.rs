@@ -3,7 +3,6 @@ use eframe::egui;
 use std::sync::{Arc, Mutex};
 use std::time::{Duration, Instant};
 use std::process::{Command, Stdio};
-use open;
 use crate::ui::theme;
 
 pub struct XerveApp {
@@ -28,7 +27,7 @@ impl XerveApp {
             return;
         }
         
-        self.terminal.add_log(format!("Found {} running services. Stopping all...", running_services));
+        self.terminal.add_log(format!("Found {running_services} running services. Stopping all..."));
         
         for service in &self.services {
             if service.status() == "Running" {
@@ -76,14 +75,14 @@ impl XerveApp {
         let php_dir = "./resource/php-8.4.11";
         
         if !std::path::Path::new(php_dir).exists() {
-            self.terminal.add_log(format!("PHP directory not found at {}. Please ensure PHP is installed in the resource directory.", php_dir));
+            self.terminal.add_log(format!("PHP directory not found at {php_dir}. Please ensure PHP is installed in the resource directory."));
             return;
         }
         
         let abs_php_dir = match crate::utils::env_path::get_absolute_path(php_dir) {
             Ok(path) => path,
             Err(e) => {
-                self.terminal.add_log(format!("Failed to get absolute path for PHP directory: {}", e));
+                self.terminal.add_log(format!("Failed to get absolute path for PHP directory: {e}"));
                 return;
             }
         };
@@ -96,21 +95,21 @@ impl XerveApp {
         #[cfg(windows)]
         match crate::utils::env_path::add_to_path_permanently(&abs_php_dir) {
             Ok(()) => {
-                self.terminal.add_log(format!("Successfully added {} to system PATH permanently", abs_php_dir));
+                self.terminal.add_log(format!("Successfully added {abs_php_dir} to system PATH permanently"));
             }
             Err(e) => {
-                self.terminal.add_log(format!("Failed to permanently add {} to PATH: {}", abs_php_dir, e));
+                self.terminal.add_log(format!("Failed to permanently add {abs_php_dir} to PATH: {e}"));
                 self.terminal.add_log("Falling back to session-only PATH setting.".to_string());
                 
                 match crate::utils::env_path::add_to_path(&abs_php_dir) {
                     Ok(()) => {
-                        self.terminal.add_log(format!("Successfully added {} to current session PATH", abs_php_dir));
+                        self.terminal.add_log(format!("Successfully added {abs_php_dir} to current session PATH"));
                         self.terminal.add_log("Note: This PATH setting is only valid for the current session.".to_string());
                         self.terminal.add_log(format!("To make it permanent, run this command in PowerShell as Administrator: {}", 
                             crate::utils::env_path::get_permanent_path_command(&abs_php_dir)));
                     }
                     Err(e) => {
-                        self.terminal.add_log(format!("Failed to add {} to PATH: {}", abs_php_dir, e));
+                        self.terminal.add_log(format!("Failed to add {abs_php_dir} to PATH: {e}"));
                     }
                 }
             }
@@ -131,7 +130,7 @@ impl XerveApp {
     fn start_php_cgi(&mut self) {
         let php_cgi_path = "./resource/php-8.4.11/php-cgi.exe";
         if !std::path::Path::new(php_cgi_path).exists() {
-            self.terminal.add_log(format!("PHP-CGI not found at {}. Skipping PHP-CGI startup.", php_cgi_path));
+            self.terminal.add_log(format!("PHP-CGI not found at {php_cgi_path}. Skipping PHP-CGI startup."));
             return;
         }
         
@@ -157,7 +156,7 @@ impl XerveApp {
                 self.terminal.add_log("PHP-CGI started in background on 127.0.0.1:9000".to_string());
             }
             Err(e) => {
-                self.terminal.add_log(format!("Failed to start PHP-CGI: {}", e));
+                self.terminal.add_log(format!("Failed to start PHP-CGI: {e}"));
             }
         }
     }
@@ -291,7 +290,7 @@ impl eframe::App for XerveApp {
                                     if std::path::Path::new(htdocs_path).exists() {
                                         match open::that(htdocs_path) {
                                             Ok(_) => self.terminal.add_log("Opening htdocs folder...".to_string()),
-                                            Err(e) => self.terminal.add_log(format!("Failed to open htdocs folder: {}", e)),
+                                            Err(e) => self.terminal.add_log(format!("Failed to open htdocs folder: {e}")),
                                         }
                                     } else {
                                         self.terminal.add_log("htdocs folder not found.".to_string());
@@ -301,7 +300,7 @@ impl eframe::App for XerveApp {
                                 if ui.add(btn("Open phpMyAdmin", theme::BLUE)).on_hover_text("Open phpMyAdmin in your browser").clicked() {
                                     match open::that("http://localhost/phpmyadmin/") {
                                         Ok(_) => self.terminal.add_log("Opening phpMyAdmin in browser...".to_string()),
-                                        Err(e) => self.terminal.add_log(format!("Failed to open phpMyAdmin: {}", e)),
+                                        Err(e) => self.terminal.add_log(format!("Failed to open phpMyAdmin: {e}")),
                                     }
                                 }
                             });

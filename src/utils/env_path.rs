@@ -14,7 +14,7 @@ pub fn get_absolute_path(relative_path: &str) -> Result<String, String> {
     let path = Path::new(relative_path);
     
     if !path.exists() {
-        return Err(format!("Path {} does not exist", relative_path));
+        return Err(format!("Path {relative_path} does not exist"));
     }
     
     match path.canonicalize() {
@@ -31,7 +31,7 @@ pub fn get_absolute_path(relative_path: &str) -> Result<String, String> {
                 None => Err("Failed to convert path to string. This may happen if the path contains invalid UTF-8 characters.".to_string())
             }
         },
-        Err(e) => Err(format!("Failed to get absolute path: {}. Check if the path exists and you have sufficient permissions.", e))
+        Err(e) => Err(format!("Failed to get absolute path: {e}. Check if the path exists and you have sufficient permissions."))
     }
 }
 
@@ -41,7 +41,7 @@ pub fn add_to_path_permanently(dir: &str) -> Result<(), String> {
     use std::process::Command;
     
     if !Path::new(dir).exists() {
-        return Err(format!("Directory '{}' does not exist. Please check if the path is correct and the directory exists.", dir));
+        return Err(format!("Directory '{dir}' does not exist. Please check if the path is correct and the directory exists."));
     }
     
     if is_in_path(dir) {
@@ -55,10 +55,9 @@ pub fn add_to_path_permanently(dir: &str) -> Result<(), String> {
         .arg("Bypass")
         .arg("-Command")
         .arg(format!(
-            "if (([Environment]::GetEnvironmentVariable('PATH', 'User') -split ';') -notcontains '{}') {{ \
-             $newPath = [Environment]::GetEnvironmentVariable('PATH', 'User') + ';{}'; \
-             [Environment]::SetEnvironmentVariable('PATH', $newPath, 'User') }}",
-            dir, dir
+            "if (([Environment]::GetEnvironmentVariable('PATH', 'User') -split ';') -notcontains '{dir}') {{ \
+             $newPath = [Environment]::GetEnvironmentVariable('PATH', 'User') + ';{dir}'; \
+             [Environment]::SetEnvironmentVariable('PATH', $newPath, 'User') }}"
         ));
     
     #[cfg(windows)]
@@ -75,17 +74,17 @@ pub fn add_to_path_permanently(dir: &str) -> Result<(), String> {
                 Ok(())
             } else {
                 let error = String::from_utf8_lossy(&output.stderr);
-                Err(format!("Failed to set PATH: {}. PowerShell command failed with error.", error))
+                Err(format!("Failed to set PATH: {error}. PowerShell command failed with error."))
             }
         }
-        Err(e) => Err(format!("Failed to execute PowerShell command: {}. This may happen if PowerShell is not available or accessible.", e))
+        Err(e) => Err(format!("Failed to execute PowerShell command: {e}. This may happen if PowerShell is not available or accessible."))
     }
 }
 
 
 pub fn add_to_path(dir: &str) -> Result<(), String> {
     if !Path::new(dir).exists() {
-        return Err(format!("Directory '{}' does not exist. Please check if the path is correct and the directory exists.", dir));
+        return Err(format!("Directory '{dir}' does not exist. Please check if the path is correct and the directory exists."));
     }
     
     if is_in_path(dir) {
@@ -97,7 +96,7 @@ pub fn add_to_path(dir: &str) -> Result<(), String> {
     let new_path = if current_path.is_empty() {
         dir.to_string()
     } else {
-        format!("{};{}", current_path, dir)
+        format!("{current_path};{dir}")
     };
     
     env::set_var("PATH", &new_path);
@@ -107,8 +106,7 @@ pub fn add_to_path(dir: &str) -> Result<(), String> {
 
 pub fn get_permanent_path_command(dir: &str) -> String {
     format!(
-        "powershell -NoProfile -ExecutionPolicy Bypass -Command \"if (([Environment]::GetEnvironmentVariable('PATH', 'User') -split ';') -notcontains '{}') {{ $newPath = [Environment]::GetEnvironmentVariable('PATH', 'User') + ';{}'; [Environment]::SetEnvironmentVariable('PATH', $newPath, 'User') }}\"",
-        dir, dir
+        "powershell -NoProfile -ExecutionPolicy Bypass -Command \"if (([Environment]::GetEnvironmentVariable('PATH', 'User') -split ';') -notcontains '{dir}') {{ $newPath = [Environment]::GetEnvironmentVariable('PATH', 'User') + ';{dir}'; [Environment]::SetEnvironmentVariable('PATH', $newPath, 'User') }}\""
     )
 }
 

@@ -2,7 +2,6 @@
 
 use std::sync::Arc;
 use eframe::egui;
-use env_logger;
 
 use crate::utils::load_icon::load_icon_from_file;
 

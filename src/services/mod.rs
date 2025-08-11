@@ -82,10 +82,10 @@ impl ServiceInfo {
                         for line in reader.lines() {
                             match line {
                                 Ok(line) => {
-                                    log_message(format!("[{}] {}", service_name, line));
+                                    log_message(format!("[{service_name}] {line}"));
                                 }
                                 Err(e) => {
-                                    log_message(format!("[{}] Error reading stdout: {}", service_name, e));
+                                    log_message(format!("[{service_name}] Error reading stdout: {e}"));
                                 }
                             }
                         }
@@ -99,10 +99,10 @@ impl ServiceInfo {
                         for line in reader.lines() {
                             match line {
                                 Ok(line) => {
-                                    log_message(format!("[{}] STDERR: {}", service_name, line));
+                                    log_message(format!("[{service_name}] STDERR: {line}"));
                                 }
                                 Err(e) => {
-                                    log_message(format!("[{}] Error reading stderr: {}", service_name, e));
+                                    log_message(format!("[{service_name}] Error reading stderr: {e}"));
                                 }
                             }
                         }
@@ -150,7 +150,7 @@ impl ServiceInfo {
                 *status_guard = new_status.to_string();
             }
             Err(e) => {
-                log_message(format!("Failed to acquire status lock: {}", e));
+                log_message(format!("Failed to acquire status lock: {e}"));
             }
         }
     }
@@ -161,7 +161,7 @@ impl ServiceInfo {
                 *status_guard == "Running"
             }
             Err(e) => {
-                log_message(format!("Failed to acquire status lock: {}", e));
+                log_message(format!("Failed to acquire status lock: {e}"));
                 false 
             }
         }
@@ -173,7 +173,7 @@ impl ServiceInfo {
                 *status_guard == "Stopped"
             }
             Err(e) => {
-                log_message(format!("Failed to acquire status lock: {}", e));
+                log_message(format!("Failed to acquire status lock: {e}"));
                 true 
             }
         }
@@ -204,7 +204,7 @@ impl Service for ServiceInfo {
                     self.update_status("Running");
                 }
                 Err(e) => {
-                    log_message(format!("Failed to start Nginx: {}", e));
+                    log_message(format!("Failed to start Nginx: {e}"));
                     self.update_status("Error");
                 }
             }
@@ -217,7 +217,7 @@ impl Service for ServiceInfo {
                 log_message("MariaDB data directory not found. Initializing...".to_string());
 
                 if let Err(e) = std::fs::create_dir_all(&data_dir) {
-                    log_message(format!("Failed to create MariaDB data directory: {}", e));
+                    log_message(format!("Failed to create MariaDB data directory: {e}"));
                     self.update_status("Error");
                     return;
                 }
@@ -225,18 +225,17 @@ impl Service for ServiceInfo {
                 let mut init_command = Command::new(mariadb_dir.join("bin/mariadb-install-db.exe"));
                 init_command
                     .arg("--datadir=./data")
-                    .current_dir(&mariadb_dir);
+                    .current_dir(mariadb_dir);
 
                 match self.run_command_with_output_capture(init_command, "init") {
                     Ok(_) => {
                         log_message("MariaDB initialized successfully".to_string());
                     }
                     Err(e) => {
-                        log_message(format!("MariaDB initialization failed: {}", e));
+                        log_message(format!("MariaDB initialization failed: {e}"));
                         if let Err(e) = std::fs::remove_dir_all(&data_dir) {
                             log_message(format!(
-                                "Failed to rollback MariaDB data directory: {}",
-                                e
+                                "Failed to rollback MariaDB data directory: {e}"
                             ));
                         } else {
                             log_message("Rolled back MariaDB data directory.".to_string());
@@ -250,7 +249,7 @@ impl Service for ServiceInfo {
             let is_data_dir_empty = match std::fs::read_dir(&data_dir) {
                 Ok(mut dir) => dir.next().is_none(),
                 Err(e) => {
-                    log_message(format!("Failed to read MariaDB data directory: {}", e));
+                    log_message(format!("Failed to read MariaDB data directory: {e}"));
                     true
                 }
             };
@@ -266,7 +265,7 @@ impl Service for ServiceInfo {
             log_message("Starting MariaDB service...".to_string());
             let mut command = Command::new(mariadb_dir.join("bin/mariadbd.exe")); // Fixed: use mariadbd.exe instead of mysqld.exe
             command
-                .current_dir(&mariadb_dir)
+                .current_dir(mariadb_dir)
                 .arg("--defaults-file=my.ini");
 
             match self.run_command_with_output_capture(command, "start") {
@@ -277,7 +276,7 @@ impl Service for ServiceInfo {
                             *process_id_guard = Some(pid);
                         }
                         Err(e) => {
-                            log_message(format!("Failed to acquire process_id lock: {}", e));
+                            log_message(format!("Failed to acquire process_id lock: {e}"));
                         }
                     }
 
@@ -287,26 +286,23 @@ impl Service for ServiceInfo {
                         match child.wait() {
                             Ok(exit_status) => {
                                 log_message(format!(
-                                    "{} process exited with status: {}",
-                                    service_name, exit_status
+                                    "{service_name} process exited with status: {exit_status}"
                                 ));
                             }
                             Err(e) => {
                                 log_message(format!(
-                                    "Error waiting for {} process: {}",
-                                    service_name, e
+                                    "Error waiting for {service_name} process: {e}"
                                 ));
                             }
                         }
                         ServiceInfo::update_status_static(status_arc, "Stopped");
                         log_message(format!(
-                            "{} status set to Stopped after process exit.",
-                            service_name
+                            "{service_name} status set to Stopped after process exit."
                         ));
                     });
 
                     std::thread::sleep(Duration::from_millis(500));
-                    log_message(format!("MariaDB started successfully with PID: {}", pid));
+                    log_message(format!("MariaDB started successfully with PID: {pid}"));
                     self.update_status("Running");
                 }
                 Ok(None) => {
@@ -314,7 +310,7 @@ impl Service for ServiceInfo {
                     self.update_status("Stopped");
                 }
                 Err(e) => {
-                    log_message(format!("Failed to start MariaDB: {}", e));
+                    log_message(format!("Failed to start MariaDB: {e}"));
                     self.update_status("Error");
                 }
             }
@@ -345,7 +341,7 @@ impl Service for ServiceInfo {
                     *process_id_guard = None;
                 }
                 Err(e) => {
-                    log_message(format!("Failed to acquire process_id lock: {}", e));
+                    log_message(format!("Failed to acquire process_id lock: {e}"));
                 }
             }
             return;
@@ -371,7 +367,7 @@ impl Service for ServiceInfo {
                     self.update_status("Stopped");
                 }
                 Err(e) => {
-                    log_message(format!("Failed to stop Nginx: {}", e));
+                    log_message(format!("Failed to stop Nginx: {e}"));
                     self.update_status("Error");
                 }
             }
@@ -380,7 +376,7 @@ impl Service for ServiceInfo {
                     *process_id_guard = None;
                 }
                 Err(e) => {
-                    log_message(format!("Failed to acquire process_id lock: {}", e));
+                    log_message(format!("Failed to acquire process_id lock: {e}"));
                 }
             }
         } else if self.name == "MariaDB" {
@@ -403,7 +399,7 @@ impl Service for ServiceInfo {
                             *process_id_guard = None;
                         }
                         Err(e) => {
-                            log_message(format!("Failed to acquire process_id lock: {}", e));
+                            log_message(format!("Failed to acquire process_id lock: {e}"));
                         }
                     }
                     return;
@@ -433,7 +429,7 @@ impl Service for ServiceInfo {
                             *process_id_guard = None;
                         }
                         Err(e) => {
-                            log_message(format!("Failed to acquire process_id lock: {}", e));
+                            log_message(format!("Failed to acquire process_id lock: {e}"));
                         }
                     }
                     return;
@@ -448,7 +444,7 @@ impl Service for ServiceInfo {
                     *process_id_guard = None;
                 }
                 Err(e) => {
-                    log_message(format!("Failed to acquire process_id lock: {}", e));
+                    log_message(format!("Failed to acquire process_id lock: {e}"));
                 }
             }
         } else {
@@ -470,7 +466,7 @@ impl Service for ServiceInfo {
                     *process_id_guard = None;
                 }
                 Err(e) => {
-                    log_message(format!("Failed to acquire process_id lock: {}", e));
+                    log_message(format!("Failed to acquire process_id lock: {e}"));
                 }
             }
         }
@@ -480,7 +476,7 @@ impl Service for ServiceInfo {
         match self.status.lock() {
             Ok(status_guard) => status_guard.clone(),
             Err(e) => {
-                log_message(format!("Failed to acquire status lock: {}", e));
+                log_message(format!("Failed to acquire status lock: {e}"));
                 "Error".to_string()
             }
         }
