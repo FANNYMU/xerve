@@ -4,6 +4,7 @@ use std::sync::{Arc, Mutex};
 use std::time::{Duration, Instant};
 use std::process::{Command, Stdio};
 use open;
+use crate::ui::theme;
 
 pub struct XerveApp {
     services: Vec<ServiceInfo>,
@@ -207,149 +208,112 @@ impl eframe::App for XerveApp {
     }
     
     fn update(&mut self, ctx: &egui::Context, _frame: &mut eframe::Frame) {
-        ctx.set_style({
-            let mut style = (*ctx.style()).clone();
-            style.spacing.button_padding = egui::vec2(16.0, 8.0);
-            style.spacing.item_spacing = egui::vec2(10.0, 10.0);
-            style.visuals.widgets.noninteractive.bg_fill = egui::Color32::from_rgb(24, 24, 24);
-            style.visuals.extreme_bg_color = egui::Color32::from_rgb(18, 18, 18);
-            style.visuals.widgets.inactive.bg_fill = egui::Color32::from_rgb(35, 35, 35);
-            style.visuals.widgets.hovered.bg_fill = egui::Color32::from_rgb(45, 45, 45);
-            style.visuals.widgets.active.bg_fill = egui::Color32::from_rgb(50, 50, 50);
-            style.visuals.widgets.open.bg_fill = egui::Color32::from_rgb(55, 55, 55);
-            style.visuals.window_fill = egui::Color32::from_rgb(27, 27, 27);
-            style.visuals.window_stroke = egui::Stroke::new(1.0, egui::Color32::from_rgb(60, 60, 60));
-            style.visuals.panel_fill = egui::Color32::from_rgb(20, 20, 20);
-            style
-        });
+        theme::apply_theme(ctx);
 
         egui::CentralPanel::default().show(ctx, |ui| {
             egui::ScrollArea::vertical()
                 .auto_shrink([false; 2])
                 .show(ui, |ui| {
-                    ui.add_space(30.0);
-                    ui.vertical_centered(|ui| {
-                        ui.heading(
-                            egui::RichText::new("Xerve")
-                                .size(48.0)
-                                .strong()
-                                .color(egui::Color32::from_rgb(80, 180, 255)),
-                        );
-                        
-                        ui.label(
-                            egui::RichText::new("Elegant Local Development Platform")
-                                .size(16.0)
-                                .italics()
-                                .color(egui::Color32::from_rgb(160, 160, 160)),
-                        );
-                        ui.add_space(20.0);
+                    ui.add_space(20.0);
 
-                        egui::Frame::group(ui.style())
-                            .fill(egui::Color32::from_rgb(30, 30, 30))
-                            .stroke(egui::Stroke::new(1.0, egui::Color32::from_rgb(60, 60, 60)))
-                            .corner_radius(12.0)
-                            .inner_margin(egui::Margin::symmetric(10i8, 10i8))
-                            .show(ui, |ui| {
-                                ui.set_min_width(620.0);
-                                ui.add_space(10.0);
-                                
+                    theme::content_container(ui, |ui| {
+                        ui.add_space(8.0);
+
+                        // Title
+                        ui.vertical_centered(|ui| {
+                            ui.heading(
+                                egui::RichText::new("Xerve")
+                                    .size(46.0)
+                                    .strong()
+                                    .color(theme::ACCENT),
+                            );
+                            ui.add_space(6.0);
+                            ui.label(
+                                egui::RichText::new("Elegant Local Development Platform")
+                                    .size(16.0)
+                                    .italics()
+                                    .color(theme::TEXT_MUTED),
+                            );
+                        });
+
+                        ui.add_space(18.0);
+
+                        // Services card
+                        theme::card_frame(ui.style()).show(ui, |ui| {
+                            ui.set_min_width(420.0);
+                            ui.add_space(6.0);
+
+                            ui.horizontal(|ui| {
                                 ui.label(
-                                    egui::RichText::new("Services")
-                                        .size(22.0)
-                                        .strong()
-                                        .color(egui::Color32::from_rgb(230, 230, 230)),
+                                    egui::RichText::new("Services").size(22.0).strong(),
                                 );
-                                ui.add_space(15.0);
+                                ui.with_layout(egui::Layout::right_to_left(egui::Align::Center), |ui| {
+                                    theme::subtle_label(ui, "Manage local daemons", 12.0);
+                                });
+                            });
 
-                                let mut service_row = crate::ui::ServiceRow::new(ui);
-                                for service in &self.services {
-                                    service_row.render(service);
+                            ui.add_space(10.0);
+
+                            let mut service_row = crate::ui::ServiceRow::new(ui);
+                            for service in &self.services {
+                                service_row.render(service);
+                            }
+                        });
+
+                        ui.add_space(16.0);
+
+                        // Tools card
+                        theme::card_frame(ui.style()).show(ui, |ui| {
+                            ui.set_min_width(420.0);
+                            ui.add_space(6.0);
+                            ui.horizontal(|ui| {
+                                ui.label(egui::RichText::new("Tools").size(22.0).strong());
+                                ui.with_layout(egui::Layout::right_to_left(egui::Align::Center), |ui| {
+                                    theme::subtle_label(ui, "Quick actions", 12.0);
+                                });
+                            });
+                            ui.add_space(10.0);
+
+                            ui.horizontal_wrapped(|ui| {
+                                let btn = |text: &str, color: egui::Color32| {
+                                    egui::Button::new(
+                                        egui::RichText::new(text)
+                                            .color(egui::Color32::WHITE)
+                                            .size(14.0),
+                                    )
+                                    .fill(color)
+                                    .min_size(egui::vec2(160.0, 36.0))
+                                    .corner_radius(8.0)
+                                };
+
+                                if ui.add(btn("Open htdocs", theme::GREEN)).on_hover_text("Open the web root folder").clicked() {
+                                    let htdocs_path = "resource\\nginx\\htdocs";
+                                    if std::path::Path::new(htdocs_path).exists() {
+                                        match open::that(htdocs_path) {
+                                            Ok(_) => self.terminal.add_log("Opening htdocs folder...".to_string()),
+                                            Err(e) => self.terminal.add_log(format!("Failed to open htdocs folder: {}", e)),
+                                        }
+                                    } else {
+                                        self.terminal.add_log("htdocs folder not found.".to_string());
+                                    }
+                                }
+
+                                if ui.add(btn("Open phpMyAdmin", theme::BLUE)).on_hover_text("Open phpMyAdmin in your browser").clicked() {
+                                    match open::that("http://localhost/phpmyadmin/") {
+                                        Ok(_) => self.terminal.add_log("Opening phpMyAdmin in browser...".to_string()),
+                                        Err(e) => self.terminal.add_log(format!("Failed to open phpMyAdmin: {}", e)),
+                                    }
                                 }
                             });
+                        });
 
-                        ui.add_space(20.0);
-                        egui::Frame::group(ui.style())
-                            .fill(egui::Color32::from_rgb(30, 30, 30))
-                            .stroke(egui::Stroke::new(1.0, egui::Color32::from_rgb(60, 60, 60)))
-                            .corner_radius(12.0)
-                            .inner_margin(egui::Margin::symmetric(10i8, 10i8))
-                            .show(ui, |ui| {
-                                ui.set_min_width(620.0);
-                                ui.add_space(10.0);
-                                
-                                ui.label(
-                                    egui::RichText::new("Tools")
-                                        .size(22.0)
-                                        .strong()
-                                        .color(egui::Color32::from_rgb(230, 230, 230)),
-                                );
-                                ui.add_space(15.0);
-
-                                ui.horizontal(|ui| {
-                                    ui.add_space(20.0);
-                                    
-                                    if ui
-                                        .add(
-                                            egui::Button::new(
-                                                egui::RichText::new("Open htdocs")
-                                                    .color(egui::Color32::WHITE)
-                                                    .size(14.0),
-                                            )
-                                            .fill(egui::Color32::from_rgb(40, 167, 69))
-                                            .min_size(egui::vec2(120.0, 36.0))
-                                            .corner_radius(8.0),
-                                        )
-                                        .clicked()
-                                    {
-                                        let htdocs_path = "resource\\nginx\\htdocs";
-                                        if std::path::Path::new(htdocs_path).exists() {
-                                            match open::that(htdocs_path) {
-                                                Ok(_) => self.terminal.add_log("Opening htdocs folder...".to_string()),
-                                                Err(e) => self.terminal.add_log(format!("Failed to open htdocs folder: {}", e)),
-                                            }
-                                        } else {
-                                            self.terminal.add_log("htdocs folder not found.".to_string());
-                                        }
-                                    }
-                                    
-                                    ui.add_space(15.0);
-                                    
-                                    if ui
-                                        .add(
-                                            egui::Button::new(
-                                                egui::RichText::new("Open phpMyAdmin")
-                                                    .color(egui::Color32::WHITE)
-                                                    .size(14.0),
-                                            )
-                                            .fill(egui::Color32::from_rgb(0, 123, 255))
-                                            .min_size(egui::vec2(160.0, 36.0))
-                                            .corner_radius(8.0),
-                                        )
-                                        .clicked()
-                                    {
-                                        match open::that("http://localhost/phpmyadmin/") {
-                                            Ok(_) => self.terminal.add_log("Opening phpMyAdmin in browser...".to_string()),
-                                            Err(e) => self.terminal.add_log(format!("Failed to open phpMyAdmin: {}", e)),
-                                        }
-                                    }
-                                    
-                                    ui.add_space(20.0);
-                                });
-                                
-                                ui.add_space(10.0);
-                            });
-
-                        ui.add_space(20.0);
-                        
+                        ui.add_space(16.0);
                         self.terminal.render(ui);
 
-                        ui.add_space(25.0);
-                        
-                        ui.label(
-                            egui::RichText::new("v1.0.0")
-                                .size(12.0)
-                                .color(egui::Color32::from_rgb(100, 100, 100)),
-                        );
+                        ui.add_space(18.0);
+                        ui.vertical_centered(|ui| {
+                            theme::subtle_label(ui, "v1.0.3", 12.0);
+                        });
                     });
                 });
         });
