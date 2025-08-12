@@ -5,10 +5,19 @@ use std::time::{Duration, Instant};
 use std::process::{Command, Stdio};
 use crate::ui::theme;
 
+#[derive(Default, PartialEq)]
+enum AppTab {
+    #[default]
+    Services,
+    ResourceMonitoring,
+}
+
 pub struct XerveApp {
     services: Vec<ServiceInfo>,
     terminal: crate::ui::Terminal,
     _php_cgi_process: Option<std::process::Child>,
+    current_tab: AppTab,
+    resource_monitoring: crate::ui::ResourceMonitoring,
 }
 
 impl XerveApp {
@@ -192,6 +201,8 @@ impl Default for XerveApp {
             services: vec![nginx_service, mariadb_service],
             terminal: crate::ui::Terminal::new(),
             _php_cgi_process: None,
+            current_tab: AppTab::Services,
+            resource_monitoring: crate::ui::ResourceMonitoring::new(),
         };
         
         app.setup_php_path();
@@ -237,74 +248,57 @@ impl eframe::App for XerveApp {
 
                         ui.add_space(18.0);
 
-                        // Services card
                         theme::card_frame(ui.style()).show(ui, |ui| {
                             ui.set_min_width(420.0);
-                            ui.add_space(6.0);
-
                             ui.horizontal(|ui| {
-                                ui.label(
-                                    egui::RichText::new("Services").size(22.0).strong(),
+                                let services_btn = ui.add(
+                                    egui::Button::new(
+                                        egui::RichText::new("Services")
+                                            .size(16.0)
+                                            .strong()
+                                    )
+                                    .selected(matches!(self.current_tab, AppTab::Services))
+                                    .fill(if matches!(self.current_tab, AppTab::Services) { 
+                                        theme::ACCENT 
+                                    } else { 
+                                        theme::BG_CARD 
+                                    })
+                                    .corner_radius(8.0)
                                 );
-                                ui.with_layout(egui::Layout::right_to_left(egui::Align::Center), |ui| {
-                                    theme::subtle_label(ui, "Manage local daemons", 12.0);
-                                });
+
+                                ui.add_space(8.0);
+
+                                let monitoring_btn = ui.add(
+                                    egui::Button::new(
+                                        egui::RichText::new("Resource Monitoring")
+                                            .size(16.0)
+                                            .strong()
+                                    )
+                                    .selected(matches!(self.current_tab, AppTab::ResourceMonitoring))
+                                    .fill(if matches!(self.current_tab, AppTab::ResourceMonitoring) { 
+                                        theme::ACCENT 
+                                    } else { 
+                                        theme::BG_CARD 
+                                    })
+                                    .corner_radius(8.0)
+                                );
+
+                                if services_btn.clicked() {
+                                    self.current_tab = AppTab::Services;
+                                }
+
+                                if monitoring_btn.clicked() {
+                                    self.current_tab = AppTab::ResourceMonitoring;
+                                }
                             });
-
-                            ui.add_space(10.0);
-
-                            let mut service_row = crate::ui::ServiceRow::new(ui);
-                            for service in &self.services {
-                                service_row.render(service);
-                            }
                         });
 
                         ui.add_space(16.0);
 
-                        // Tools card
-                        theme::card_frame(ui.style()).show(ui, |ui| {
-                            ui.set_min_width(420.0);
-                            ui.add_space(6.0);
-                            ui.horizontal(|ui| {
-                                ui.label(egui::RichText::new("Tools").size(22.0).strong());
-                                ui.with_layout(egui::Layout::right_to_left(egui::Align::Center), |ui| {
-                                    theme::subtle_label(ui, "Quick actions", 12.0);
-                                });
-                            });
-                            ui.add_space(10.0);
-
-                            ui.horizontal_wrapped(|ui| {
-                                let btn = |text: &str, color: egui::Color32| {
-                                    egui::Button::new(
-                                        egui::RichText::new(text)
-                                            .color(egui::Color32::WHITE)
-                                            .size(14.0),
-                                    )
-                                    .fill(color)
-                                    .min_size(egui::vec2(160.0, 36.0))
-                                    .corner_radius(8.0)
-                                };
-
-                                if ui.add(btn("Open htdocs", theme::GREEN)).on_hover_text("Open the web root folder").clicked() {
-                                    let htdocs_path = "resource\\nginx\\htdocs";
-                                    if std::path::Path::new(htdocs_path).exists() {
-                                        match open::that(htdocs_path) {
-                                            Ok(_) => self.terminal.add_log("Opening htdocs folder...".to_string()),
-                                            Err(e) => self.terminal.add_log(format!("Failed to open htdocs folder: {e}")),
-                                        }
-                                    } else {
-                                        self.terminal.add_log("htdocs folder not found.".to_string());
-                                    }
-                                }
-
-                                if ui.add(btn("Open phpMyAdmin", theme::BLUE)).on_hover_text("Open phpMyAdmin in your browser").clicked() {
-                                    match open::that("http://localhost/phpmyadmin/") {
-                                        Ok(_) => self.terminal.add_log("Opening phpMyAdmin in browser...".to_string()),
-                                        Err(e) => self.terminal.add_log(format!("Failed to open phpMyAdmin: {e}")),
-                                    }
-                                }
-                            });
-                        });
+                        match self.current_tab {
+                            AppTab::Services => self.render_services_tab(ui),
+                            AppTab::ResourceMonitoring => self.render_resource_monitoring_tab(ui),
+                        };
 
                         ui.add_space(16.0);
                         self.terminal.render(ui);
@@ -316,5 +310,82 @@ impl eframe::App for XerveApp {
                     });
                 });
         });
+    }
+}
+
+impl XerveApp {
+    fn render_services_tab(&mut self, ui: &mut egui::Ui) {
+        // Services card
+        theme::card_frame(ui.style()).show(ui, |ui| {
+            ui.set_min_width(420.0);
+            ui.add_space(6.0);
+
+            ui.horizontal(|ui| {
+                ui.label(
+                    egui::RichText::new("Services").size(22.0).strong(),
+                );
+                ui.with_layout(egui::Layout::right_to_left(egui::Align::Center), |ui| {
+                    theme::subtle_label(ui, "Manage local daemons", 12.0);
+                });
+            });
+
+            ui.add_space(10.0);
+
+            let mut service_row = crate::ui::ServiceRow::new(ui);
+            for service in &self.services {
+                service_row.render(service);
+            }
+        });
+
+        ui.add_space(16.0);
+
+        // Tools card
+        theme::card_frame(ui.style()).show(ui, |ui| {
+            ui.set_min_width(420.0);
+            ui.add_space(6.0);
+            ui.horizontal(|ui| {
+                ui.label(egui::RichText::new("Tools").size(22.0).strong());
+                ui.with_layout(egui::Layout::right_to_left(egui::Align::Center), |ui| {
+                    theme::subtle_label(ui, "Quick actions", 12.0);
+                });
+            });
+            ui.add_space(10.0);
+
+            ui.horizontal_wrapped(|ui| {
+                let btn = |text: &str, color: egui::Color32| {
+                    egui::Button::new(
+                        egui::RichText::new(text)
+                            .color(egui::Color32::WHITE)
+                            .size(14.0),
+                    )
+                    .fill(color)
+                    .min_size(egui::vec2(160.0, 36.0))
+                    .corner_radius(8.0)
+                };
+
+                if ui.add(btn("Open htdocs", theme::GREEN)).on_hover_text("Open the web root folder").clicked() {
+                    let htdocs_path = "resource\\nginx\\htdocs";
+                    if std::path::Path::new(htdocs_path).exists() {
+                        match open::that(htdocs_path) {
+                            Ok(_) => self.terminal.add_log("Opening htdocs folder...".to_string()),
+                            Err(e) => self.terminal.add_log(format!("Failed to open htdocs folder: {e}")),
+                        }
+                    } else {
+                        self.terminal.add_log("htdocs folder not found.".to_string());
+                    }
+                }
+
+                if ui.add(btn("Open phpMyAdmin", theme::BLUE)).on_hover_text("Open phpMyAdmin in your browser").clicked() {
+                    match open::that("http://localhost/phpmyadmin/") {
+                        Ok(_) => self.terminal.add_log("Opening phpMyAdmin in browser...".to_string()),
+                        Err(e) => self.terminal.add_log(format!("Failed to open phpMyAdmin: {e}")),
+                    }
+                }
+            });
+        });
+    }
+
+    fn render_resource_monitoring_tab(&mut self, ui: &mut egui::Ui) {
+        self.resource_monitoring.render(ui, &self.services);
     }
 }
