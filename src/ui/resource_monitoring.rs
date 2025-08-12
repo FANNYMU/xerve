@@ -1,13 +1,12 @@
 use eframe::egui;
 use crate::services::{Service, ServiceInfo};
 use crate::ui::theme;
-use sysinfo::{System, ProcessRefreshKind, RefreshKind, MemoryRefreshKind, CpuRefreshKind};
-use std::time::{SystemTime, Instant};
+use sysinfo::{System, ProcessRefreshKind, RefreshKind, MemoryRefreshKind, CpuRefreshKind, Pid};
+use std::time::Instant;
 use std::collections::HashMap;
 
 #[derive(Clone)]
 pub struct ResourceDataPoint {
-    timestamp: SystemTime,
     cpu_usage: f32,
     memory_usage: u64,
 }
@@ -15,6 +14,7 @@ pub struct ResourceDataPoint {
 pub struct ResourceMonitoring {
     sys: System,
     service_data: HashMap<String, Vec<ResourceDataPoint>>,
+    service_pids: HashMap<String, Vec<Pid>>,
     last_update: Instant,
     system_cpu: f32,
     system_memory: u64,
@@ -37,6 +37,7 @@ impl ResourceMonitoring {
         ResourceMonitoring {
             sys,
             service_data: HashMap::new(),
+            service_pids: HashMap::new(),
             last_update: Instant::now(),
             system_cpu: 0.0,
             system_memory: 0,
@@ -50,21 +51,20 @@ impl ResourceMonitoring {
             self.last_update = Instant::now();
         }
 
-        // Header
-        ui.vertical_centered(|ui| {
-            // ui.heading(
-            // egui::RichText::new("Resource Monitoring")
-            //         .size(32.0)
-            //         .strong()
-            //         .color(theme::ACCENT),
-            // );
-            ui.add_space(6.0);
-             // ui.label(
-            //    egui::RichText::new("Monitor CPU and memory usage for running services")
-              //      .size(16.0)
-                //    .color(theme::TEXT_MUTED),
-            //);
-        });
+        // ui.vertical_centered(|ui| {
+        //     ui.heading(
+        //         egui::RichText::new("Resource Monitoring")
+        //             .size(32.0)
+        //             .strong()
+        //             .color(theme::ACCENT),
+        //     );
+        //     ui.add_space(6.0);
+        //     ui.label(
+        //         egui::RichText::new("Real-time CPU and memory usage for Nginx & MariaDB")
+        //             .size(16.0)
+        //             .color(theme::TEXT_MUTED),
+        //     );
+        // });
 
         ui.add_space(24.0);
 
@@ -104,19 +104,17 @@ impl ResourceMonitoring {
         self.system_memory = self.sys.used_memory();
         self.system_total_memory = self.sys.total_memory();
 
-        let now = SystemTime::now();
-        
         for service in services {
             let service_name = &service.name;
             
             let (cpu_usage, memory_usage) = if service.status() == "Running" {
-                self.generate_demo_data(service_name)
+                self.get_service_usage(service_name)
             } else {
+                self.service_pids.remove(service_name);
                 (0.0, 0)
             };
             
             let data_point = ResourceDataPoint {
-                timestamp: now,
                 cpu_usage,
                 memory_usage,
             };
@@ -130,26 +128,49 @@ impl ResourceMonitoring {
         }
     }
 
-    fn generate_demo_data(&self, service_name: &str) -> (f32, u64) {
-        use rand::Rng;
-        let mut rng = rand::thread_rng();
+    fn get_service_usage(&mut self, service_name: &str) -> (f32, u64) {
+        let process_names = self.get_process_names_for_service(service_name);
         
-        match service_name {
-            "Nginx" => {
-                let base_cpu = 2.0 + rng.gen::<f32>() * 8.0; // 2-10% CPU
-                let base_memory = 20_000_000 + rng.gen::<u64>() % 30_000_000; // 20-50MB
-                (base_cpu, base_memory)
-            },
-            "MariaDB" => {
-                let base_cpu = 5.0 + rng.gen::<f32>() * 15.0; // 5-20% CPU
-                let base_memory = 100_000_000 + rng.gen::<u64>() % 200_000_000; // 100-300MB
-                (base_cpu, base_memory)
-            },
-            _ => {
-                let base_cpu = 1.0 + rng.gen::<f32>() * 5.0; // 1-6% CPU
-                let base_memory = 10_000_000 + rng.gen::<u64>() % 20_000_000; // 10-30MB
-                (base_cpu, base_memory)
+        let mut total_cpu = 0.0;
+        let mut total_memory = 0u64;
+        let mut found_pids = Vec::new();
+
+        for (pid, process) in self.sys.processes() {
+            let process_name = process.name();
+            
+            if !process_names.is_empty() && process_names.iter().any(|name| {
+                process_name.to_lowercase().contains(&name.to_lowercase()) ||
+                name.to_lowercase().contains(&process_name.to_lowercase())
+            }) {
+                total_cpu += process.cpu_usage();
+                total_memory += process.memory();
+                found_pids.push(*pid);
             }
+        }
+
+        if !found_pids.is_empty() {
+            self.service_pids.insert(service_name.to_string(), found_pids);
+        }
+
+        if total_cpu == 0.0 && total_memory == 0 {
+            if let Some(pids) = self.service_pids.get(service_name) {
+                for pid in pids {
+                    if let Some(process) = self.sys.process(*pid) {
+                        total_cpu += process.cpu_usage();
+                        total_memory += process.memory();
+                    }
+                }
+            }
+        }
+
+        (total_cpu, total_memory)
+    }
+
+    fn get_process_names_for_service(&self, service_name: &str) -> Vec<&'static str> {
+        match service_name {
+            "Nginx" => vec!["nginx", "nginx.exe"],
+            "MariaDB" => vec!["mariadbd", "mariadbd.exe", "mysqld", "mysqld.exe"],
+            _ => vec![], // Only Nginx and MariaDB are supported
         }
     }
 
@@ -164,6 +185,13 @@ impl ResourceMonitoring {
                         .size(20.0)
                         .strong(),
                 );
+                ui.with_layout(egui::Layout::right_to_left(egui::Align::Center), |ui| {
+                    ui.label(
+                        egui::RichText::new("Real-time system metrics")
+                            .size(12.0)
+                            .color(theme::TEXT_MUTED),
+                    );
+                });
             });
 
             ui.add_space(12.0);
@@ -196,6 +224,14 @@ impl ResourceMonitoring {
                 let memory_gb = self.system_memory as f32 / 1_000_000_000.0;
                 let total_gb = self.system_total_memory as f32 / 1_000_000_000.0;
                 ui.label(egui::RichText::new(format!("{:.1}/{:.1} GB", memory_gb, total_gb)).size(14.0));
+            });
+
+            ui.add_space(8.0);
+
+            ui.horizontal(|ui| {
+                ui.label(egui::RichText::new("Running Processes:").size(14.0).strong());
+                ui.add_space(10.0);
+                ui.label(egui::RichText::new(format!("{}", self.sys.processes().len())).size(14.0));
             });
         });
     }
@@ -257,6 +293,24 @@ impl ResourceMonitoring {
         let current_cpu = data_points.last().map_or(0.0, |p| p.cpu_usage);
         let current_memory = data_points.last().map_or(0, |p| p.memory_usage);
 
+        if let Some(pids) = self.service_pids.get(service_name) {
+            if !pids.is_empty() {
+                ui.horizontal(|ui| {
+                    ui.label(egui::RichText::new("Processes:").size(12.0).color(theme::TEXT_MUTED));
+                    ui.label(egui::RichText::new(format!("{} found", pids.len())).size(12.0).color(theme::TEXT_MUTED));
+                    
+                    if pids.len() <= 3 {
+                        for pid in pids {
+                            ui.label(egui::RichText::new(format!("PID:{}", pid)).size(10.0).color(theme::TEXT_MUTED));
+                        }
+                    } else {
+                        ui.label(egui::RichText::new(format!("PID:{} +{} more", pids[0], pids.len() - 1)).size(10.0).color(theme::TEXT_MUTED));
+                    }
+                });
+                ui.add_space(4.0);
+            }
+        }
+
         ui.horizontal(|ui| {
             ui.label(egui::RichText::new("CPU:").size(14.0).strong());
             ui.add_space(10.0);
@@ -274,7 +328,8 @@ impl ResourceMonitoring {
             ui.add_space(10.0);
             
             let memory_mb = current_memory as f32 / 1_000_000.0;
-            self.render_progress_bar(ui, memory_mb, 500.0, theme::GREEN); // Max 500MB for visualization
+            let max_memory_mb = if memory_mb > 500.0 { memory_mb * 1.2 } else { 500.0 };
+            self.render_progress_bar(ui, memory_mb, max_memory_mb, theme::GREEN);
             
             ui.add_space(10.0);
             ui.label(egui::RichText::new(format!("{:.1} MB", memory_mb)).size(14.0));
@@ -288,8 +343,14 @@ impl ResourceMonitoring {
             ui.vertical_centered(|ui| {
                 ui.add_space(20.0);
                 ui.label(
-                    egui::RichText::new("Collecting data...")
+                    egui::RichText::new("Collecting real-time data...")
                         .size(14.0)
+                        .color(theme::TEXT_MUTED),
+                );
+                ui.add_space(4.0);
+                ui.label(
+                    egui::RichText::new("Monitoring Nginx & MariaDB processes")
+                        .size(12.0)
                         .color(theme::TEXT_MUTED),
                 );
             });
@@ -324,7 +385,7 @@ impl ResourceMonitoring {
     }
 
     fn render_graph(&self, ui: &mut egui::Ui, data_points: &[ResourceDataPoint]) {
-        ui.label(egui::RichText::new("Resource Usage History").size(14.0).strong());
+        ui.label(egui::RichText::new("Resource Usage History (Real-time)").size(14.0).strong());
         ui.add_space(8.0);
         
         let graph_height = 120.0;
@@ -339,7 +400,7 @@ impl ResourceMonitoring {
             
             let max_cpu = data_points.iter().map(|p| p.cpu_usage).fold(0.0f32, f32::max).max(10.0);
             let max_memory = data_points.iter().map(|p| p.memory_usage as f32).fold(0.0f32, f32::max).max(10_000_000.0);
-            
+        
             let cpu_points: Vec<egui::Pos2> = data_points
                 .iter()
                 .enumerate()
@@ -362,7 +423,7 @@ impl ResourceMonitoring {
                 .enumerate()
                 .map(|(i, p)| {
                     let x = inner_rect.left() + (i as f32 / (data_points.len() - 1) as f32) * inner_rect.width();
-                    let normalized_memory = (p.memory_usage as f32 / max_memory) * max_cpu; // Scale to CPU range for visualization
+                    let normalized_memory = (p.memory_usage as f32 / max_memory) * max_cpu;
                     let y = inner_rect.bottom() - (normalized_memory / max_cpu) * inner_rect.height();
                     egui::Pos2::new(x, y)
                 })
