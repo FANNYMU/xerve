@@ -5,6 +5,26 @@ All notable changes to this project will be documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [1.0.3] - 2025-08-12
+
+### Added
+- Real-time resource monitoring with live CPU and memory usage graphs
+- System overview dashboard showing overall system resource usage
+- Process tracking for Nginx and MariaDB services
+- Historical data visualization for resource usage trends
+
+### Improved
+- Enhanced UI/UX for resource monitoring with better data visualization
+- Real-time updates every 1 second for accurate resource usage tracking
+- Improved progress bars with better visual feedback
+- More detailed service information including process IDs
+
+### Technical Details
+- Integrated sysinfo crate for accurate system and process information
+- Implemented real-time data collection and visualization
+- Added process name matching for better service identification
+- Enhanced graph rendering with proper scaling and labeling
+
 ## [1.0.2] - 2025-08-10
 
 ### Added
