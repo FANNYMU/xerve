@@ -74,6 +74,7 @@
 <td width="50%">
 
 ### 🚀 **Service Management**
+
 - 🌐 **Nginx Integration** - Complete web server control
 - 🗄️ **MariaDB Integration** - Full database management
 - ⚙️ **Auto-Initialization** - Automatic setup for new installations
@@ -83,6 +84,7 @@
 <td width="50%">
 
 ### 🎨 **Beautiful Interface**
+
 - 🌙 **Modern Dark Theme** - Easy on the eyes
 - 📊 **Real-time Status** - Live service indicators
 - 💻 **Integrated Terminal** - Process logs in real-time
@@ -94,12 +96,12 @@
 
 ### 🛡️ **System Integration**
 
-| Feature | Description |
-|---------|-------------|
-| 🛑 **Graceful Shutdown** | Automatic service cleanup on exit |
-| ⚠️ **Error Handling** | Comprehensive error reporting |
-| 🧹 **Resource Management** | Proper cleanup and resource handling |
-| 🔒 **Thread Safety** | Atomic operations prevent race conditions |
+| Feature                    | Description                               |
+| -------------------------- | ----------------------------------------- |
+| 🛑 **Graceful Shutdown**   | Automatic service cleanup on exit         |
+| ⚠️ **Error Handling**      | Comprehensive error reporting             |
+| 🧹 **Resource Management** | Proper cleanup and resource handling      |
+| 🔒 **Thread Safety**       | Atomic operations prevent race conditions |
 
 ---
 
@@ -128,7 +130,9 @@ mkdir -p resource/nginx resource/mariadb
 ```
 
 #### 📋 **Resource Setup**
+
 Place your services in the resource directory:
+
 - 📁 `resource/nginx/` - Your Nginx installation
 - 📁 `resource/mariadb/` - Your MariaDB installation
 
@@ -139,11 +143,13 @@ Place your services in the resource directory:
 ### 🏃‍♂️ **Running Xerve**
 
 **Development:**
+
 ```bash
 cargo run --release
 ```
 
 **Production:**
+
 ```bash
 ./target/release/xerve.exe
 ```
@@ -152,12 +158,12 @@ cargo run --release
 
 <div align="center">
 
-| Action | Description |
-|--------|-------------|
-| 🟢 **Start Service** | Click the green "Start" button |
-| 🔴 **Stop Service** | Click the red "Stop" button |
-| 👀 **Monitor Output** | Watch the integrated terminal |
-| 📊 **Check Status** | View real-time status indicators |
+| Action                | Description                      |
+| --------------------- | -------------------------------- |
+| 🟢 **Start Service**  | Click the green "Start" button   |
+| 🔴 **Stop Service**   | Click the red "Stop" button      |
+| 👀 **Monitor Output** | Watch the integrated terminal    |
+| 📊 **Check Status**   | View real-time status indicators |
 
 </div>
 
@@ -168,9 +174,16 @@ cargo run --release
 <div align="center">
 
 ### 🖥️ **Main Interface**
+
 <img src="docs/screenshot.png" alt="Xerve Main Interface" width="900" style="border-radius: 10px; box-shadow: 0 8px 16px rgba(0,0,0,0.3);">
 
-*The elegant main interface showcasing service controls and integrated terminal output*
+_The elegant main interface showcasing service controls and integrated terminal output_
+
+### 📊 **Resource Monitoring**
+
+<img src="docs/monitoring.png" alt="Xerve Resource Monitoring" width="900" style="border-radius: 10px; box-shadow: 0 8px 16px rgba(0,0,0,0.3);">
+
+_Real-time monitoring of system resources and service performance metrics_
 
 </div>
 
@@ -180,12 +193,12 @@ cargo run --release
 
 <div align="center">
 
-| Requirement | Version | Status |
-|-------------|---------|--------|
-| 🖥️ **Windows** | 10/11 | ✅ Supported |
-| 🦀 **Rust** | Latest | 🔧 For building |
-| 🌐 **Nginx** | Any | 📦 Optional |
-| 🗄️ **MariaDB** | Any | 📦 Optional |
+| Requirement    | Version | Status          |
+| -------------- | ------- | --------------- |
+| 🖥️ **Windows** | 10/11   | ✅ Supported    |
+| 🦀 **Rust**    | Latest  | 🔧 For building |
+| 🌐 **Nginx**   | Any     | 📦 Optional     |
+| 🗄️ **MariaDB** | Any     | 📦 Optional     |
 
 </div>
 
@@ -216,13 +229,13 @@ We ❤️ contributions! Here's how you can help make Xerve even better:
 
 <div align="center">
 
-| Type | Description |
-|------|-------------|
-| 🐛 **Bug Reports** | Help us squash those pesky bugs |
-| 💡 **Feature Ideas** | Suggest cool new features |
-| 📚 **Documentation** | Improve our docs |
-| 🔧 **Code** | Submit awesome enhancements |
-| 🆕 **Services** | Add support for new services |
+| Type                 | Description                     |
+| -------------------- | ------------------------------- |
+| 🐛 **Bug Reports**   | Help us squash those pesky bugs |
+| 💡 **Feature Ideas** | Suggest cool new features       |
+| 📚 **Documentation** | Improve our docs                |
+| 🔧 **Code**          | Submit awesome enhancements     |
+| 🆕 **Services**      | Add support for new services    |
 
 </div>
 
@@ -234,7 +247,7 @@ We ❤️ contributions! Here's how you can help make Xerve even better:
 
 **MIT License** - see the [**LICENSE**](LICENSE) file for details
 
-*Free to use, modify, and distribute! 🎉*
+_Free to use, modify, and distribute! 🎉_
 
 </div>
 
@@ -246,12 +259,12 @@ Special thanks to these amazing projects that power Xerve:
 
 <div align="center">
 
-| Technology | Description | Link |
-|------------|-------------|------|
-| 🦀 **Rust** | Systems programming language | [rust-lang.org](https://www.rust-lang.org/) |
-| 🎨 **egui** | Immediate mode GUI framework | [github.com/emilk/egui](https://github.com/emilk/egui) |
-| 🌐 **Nginx** | High-performance web server | [nginx.org](https://nginx.org/) |
-| 🗄️ **MariaDB** | Open source database | [mariadb.org](https://mariadb.org/) |
+| Technology     | Description                  | Link                                                   |
+| -------------- | ---------------------------- | ------------------------------------------------------ |
+| 🦀 **Rust**    | Systems programming language | [rust-lang.org](https://www.rust-lang.org/)            |
+| 🎨 **egui**    | Immediate mode GUI framework | [github.com/emilk/egui](https://github.com/emilk/egui) |
+| 🌐 **Nginx**   | High-performance web server  | [nginx.org](https://nginx.org/)                        |
+| 🗄️ **MariaDB** | Open source database         | [mariadb.org](https://mariadb.org/)                    |
 
 </div>
 
@@ -262,9 +275,11 @@ Special thanks to these amazing projects that power Xerve:
 <div align="center">
 
 ### 📖 **Documentation**
+
 [📋 Changelog](CHANGELOG.md) • [📝 Release Notes](RELEASE.md) • [🤝 Contributing Guide](CONTRIBUTING.md)
 
 ### 🔗 **Links**
+
 [🐛 Report Issues](https://github.com/FANNYMU/xerve/issues) • [💡 Request Features](https://github.com/FANNYMU/xerve/issues/new) • [💬 Discussions](https://github.com/FANNYMU/xerve/discussions)
 
 </div>
